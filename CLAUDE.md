@@ -17,6 +17,10 @@ No test or lint commands are configured.
 This repo does **not** include the Oak Woods art assets (we can’t redistribute them).  
 Follow `README.md` to download the pack and extract it into `public/assets/oakwoods/`.
 
+## Local Workspace Note
+
+Verified on 2026-03-21: this local clone already has the required Oak Woods art files in `public/assets/oakwoods/`, so `npm run dev` can be run directly without additional asset setup.
+
 ## Architecture
 
 This is a Phaser 3 pixel art platformer built with TypeScript and Vite.

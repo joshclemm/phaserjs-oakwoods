@@ -23,6 +23,7 @@ npm install
 ```
 
 2) Add the **Oak Woods** art pack (required — not included in this repo). See **Assets (Required)** below.
+If `public/assets/oakwoods/` already contains the PNG files, you can skip this step.
 
 3) Run:
 ```bash
@@ -49,6 +50,7 @@ Each `SKILL.md` contains its triggers, workflow, and reference docs.
 ## Assets (Required)
 
 This repository **does not** include the Oak Woods art assets (we can’t redistribute them).
+If your local clone already has the files under `public/assets/oakwoods/`, no extra asset setup is needed.
 
 1) Get the pack from:
 - [Oak Woods (itch.io)](https://brullov.itch.io/oak-woods)
