@@ -22,6 +22,21 @@ interface AssetManifest {
         repeat: number;
       }>;
     };
+    decorations?: {
+      shop?: {
+        key: string;
+        path: string;
+        frameWidth: number;
+        frameHeight: number;
+        animations: Array<{
+          key: string;
+          startFrame: number;
+          endFrame: number;
+          frameRate: number;
+          repeat: number;
+        }>;
+      };
+    };
   };
   tilesets: {
     main: {
@@ -99,9 +114,18 @@ export class BootScene extends Phaser.Scene {
       frameHeight: char.frameHeight,
     });
 
+    const shop = manifest.spritesheets.decorations?.shop;
+    if (shop) {
+      this.load.spritesheet(shop.key, `${basePath}/${shop.path}`, {
+        frameWidth: shop.frameWidth,
+        frameHeight: shop.frameHeight,
+      });
+    }
+
     // Tileset image
     const tileset = manifest.tilesets.main;
     this.load.image(tileset.key, `${basePath}/${tileset.path}`);
+    this.load.json("oakwoods-level-1", "levels/level-1.json");
 
     // Store manifest in registry for other scenes
     this.registry.set("oakwoods-manifest", manifest);

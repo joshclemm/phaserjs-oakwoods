@@ -1,217 +1,111 @@
 import Phaser from "phaser";
 
+const TILE_SIZE = 24;
+const VIEWPORT_WIDTH = 320;
+const VIEWPORT_HEIGHT = 180;
+const LAYER_OFFSET_Y = 16;
+
+const TERRAIN_TILES = {
+  topLeft: 0,
+  topCenter: [1, 2],
+  topRight: 3,
+  leftWall: [21, 42, 63],
+  rightWall: [24, 45, 66],
+  shallowFill: [253, 254],
+  deepFill: [274, 275],
+} as const;
+
+type PropType =
+  | "shop"
+  | "lamp"
+  | "sign"
+  | "fence1"
+  | "fence2"
+  | "rock1"
+  | "rock2"
+  | "rock3"
+  | "grass1"
+  | "grass2"
+  | "grass3";
+
+interface LevelProp {
+  type: PropType;
+  x: number;
+  depth?: "back" | "front";
+  offsetY?: number;
+  flipX?: boolean;
+}
+
+interface LevelSolidRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface LevelData {
+  version: number;
+  name: string;
+  width: number;
+  height: number;
+  spawn: {
+    x: number;
+    y: number;
+  };
+  solids: LevelSolidRect[];
+  props: LevelProp[];
+}
+
 export class GameScene extends Phaser.Scene {
-  private groundLayer!: Phaser.Tilemaps.TilemapLayer;
+  private terrainLayer!: Phaser.Tilemaps.TilemapLayer;
   private map!: Phaser.Tilemaps.Tilemap;
   private player!: Phaser.Physics.Arcade.Sprite;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private attackKey!: Phaser.Input.Keyboard.Key;
 
-  // Background layers for parallax scrolling
   private bgLayer1!: Phaser.GameObjects.TileSprite;
   private bgLayer2!: Phaser.GameObjects.TileSprite;
   private bgLayer3!: Phaser.GameObjects.TileSprite;
 
-  // Track how far ground has been generated
-  private groundGeneratedToX: number = 0;
-
-  // Attack state
-  private isAttacking: boolean = false;
+  private isAttacking = false;
+  private solidGrid: boolean[][] = [];
+  private worldWidth = VIEWPORT_WIDTH;
 
   constructor() {
     super("GameScene");
   }
 
   create(): void {
-    // === BACKGROUND LAYERS (Parallax) ===
-    // These are fixed to camera but we'll scroll their texture in update()
-    // Layer 1 - furthest (sky/distant)
-    this.bgLayer1 = this.add.tileSprite(0, 0, 320, 180, "oakwoods-bg-layer1")
-      .setOrigin(0, 0)
-      .setScrollFactor(0);
-
-    // Layer 2 - mid distance
-    this.bgLayer2 = this.add.tileSprite(0, 0, 320, 180, "oakwoods-bg-layer2")
-      .setOrigin(0, 0)
-      .setScrollFactor(0);
-
-    // Layer 3 - nearest (foreground trees)
-    this.bgLayer3 = this.add.tileSprite(0, 0, 320, 180, "oakwoods-bg-layer3")
-      .setOrigin(0, 0)
-      .setScrollFactor(0);
-
-    // === GROUND TILEMAP ===
-    // Create a wide tilemap for infinite scrolling (500 tiles = ~12000px)
-    this.map = this.make.tilemap({
-      tileWidth: 24,
-      tileHeight: 24,
-      width: 500,
-      height: 8,
-    });
-
-    // Add the tileset image to the map
-    const tileset = this.map.addTilesetImage("oakwoods-tileset");
-    if (!tileset) {
-      console.error("Failed to add tileset");
+    const level = this.cache.json.get("oakwoods-level-1") as LevelData | undefined;
+    if (!level) {
+      this.add.text(10, 10, "Missing level file: public/levels/level-1.json", {
+        fontSize: "12px",
+        color: "#ffffff",
+        wordWrap: { width: VIEWPORT_WIDTH - 20 },
+      });
       return;
     }
 
-    // Create a blank layer (y=16 anchors ground to bottom of 180px viewport)
-    const layer = this.map.createBlankLayer("ground", tileset, 0, 16);
-    if (!layer) {
-      console.error("Failed to create layer");
-      return;
-    }
-    this.groundLayer = layer;
+    this.createBackground();
+    this.createAnimations();
+    this.buildTerrain(level);
+    this.paintInteriorFill(level);
+    this.placeProps(level);
+    this.createPlayer(level);
+    this.configureCamera(level);
 
-    // Fill initial ground (first 20 tiles)
-    for (let x = 0; x < 20; x++) {
-      this.map.putTileAt(0, x, 7, true, "ground");
-    }
-    this.groundGeneratedToX = 20;
-
-    // Enable collision on all tiles in the ground layer
-    this.groundLayer.setCollisionByExclusion([-1]);
-
-    // === DECORATIONS ===
-    // Ground surface at bottom of viewport
-    const groundY = 184;
-
-    // Shop in the background (behind player)
-    this.add.image(250, groundY, "oakwoods-shop").setOrigin(0.5, 1);
-
-    // Lamp posts
-    this.add.image(50, groundY, "oakwoods-lamp").setOrigin(0.5, 1);
-    this.add.image(180, groundY, "oakwoods-lamp").setOrigin(0.5, 1);
-
-    // Sign
-    this.add.image(320, groundY, "oakwoods-sign").setOrigin(0.5, 1);
-
-    // Fences
-    this.add.image(400, groundY, "oakwoods-fence1").setOrigin(0.5, 1);
-    this.add.image(470, groundY, "oakwoods-fence2").setOrigin(0.5, 1);
-
-    // Rocks scattered around
-    this.add.image(140, groundY, "oakwoods-rock1").setOrigin(0.5, 1);
-    this.add.image(350, groundY, "oakwoods-rock2").setOrigin(0.5, 1);
-    this.add.image(550, groundY, "oakwoods-rock3").setOrigin(0.5, 1);
-
-    // Grass tufts on the ground
-    this.add.image(70, groundY, "oakwoods-grass1").setOrigin(0.5, 1);
-    this.add.image(120, groundY, "oakwoods-grass2").setOrigin(0.5, 1);
-    this.add.image(200, groundY, "oakwoods-grass3").setOrigin(0.5, 1);
-    this.add.image(280, groundY, "oakwoods-grass1").setOrigin(0.5, 1);
-    this.add.image(380, groundY, "oakwoods-grass2").setOrigin(0.5, 1);
-    this.add.image(450, groundY, "oakwoods-grass3").setOrigin(0.5, 1);
-
-    // === PLAYER CHARACTER ===
-    // Create physics sprite at starting position
-    // Ground is at y=168, player origin is center, so spawn above ground
-    this.player = this.physics.add.sprite(100, 120, "oakwoods-char-blue", 0);
-
-    // Configure physics body - no world bounds (infinite scroll)
-    this.player.setBounce(0);
-
-    // Adjust hitbox - character sprite is 56x56 but actual character is smaller
-    // Set a smaller hitbox aligned with character's feet at bottom of sprite
-    this.player.body?.setSize(20, 38);
-    this.player.body?.setOffset(18, 16);
-
-    // Add collision between player and ground
-    this.physics.add.collider(this.player, this.groundLayer);
-
-    // === CAMERA ===
-    // Set up camera to follow player
-    this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
-    this.cameras.main.setDeadzone(50, 50);
-
-    // Set world bounds - no left bound limit, very large right bound
-    this.physics.world.setBounds(0, 0, 500 * 24, 180);
-    // But player can only be stopped by left edge
-    this.player.setCollideWorldBounds(true);
-    this.player.body?.setBoundsRectangle(new Phaser.Geom.Rectangle(0, 0, 999999, 180));
-
-    // === ANIMATIONS ===
-    // Create idle animation (frames 0-5)
-    this.anims.create({
-      key: "char-blue-idle",
-      frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
-        start: 0,
-        end: 5,
-      }),
-      frameRate: 8,
-      repeat: -1,
-    });
-
-    // Create run animation (frames 16-21)
-    this.anims.create({
-      key: "char-blue-run",
-      frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
-        start: 16,
-        end: 21,
-      }),
-      frameRate: 10,
-      repeat: -1,
-    });
-
-    // Create jump animation (frames 28-31)
-    this.anims.create({
-      key: "char-blue-jump",
-      frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
-        start: 28,
-        end: 31,
-      }),
-      frameRate: 10,
-      repeat: 0,
-    });
-
-    // Create fall animation (frames 35-37)
-    this.anims.create({
-      key: "char-blue-fall",
-      frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
-        start: 35,
-        end: 37,
-      }),
-      frameRate: 10,
-      repeat: 0,
-    });
-
-    // Create attack animation (frames 8-13)
-    this.anims.create({
-      key: "char-blue-attack",
-      frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
-        start: 8,
-        end: 13,
-      }),
-      frameRate: 12,
-      repeat: 0,
-    });
-
-    // Play idle animation by default
-    this.player.anims.play("char-blue-idle", true);
-
-    // Listen for attack animation complete
-    this.player.on("animationcomplete", (anim: Phaser.Animations.Animation) => {
-      if (anim.key === "char-blue-attack") {
-        this.isAttacking = false;
-      }
-    });
-
-    // === INPUT ===
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.attackKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.X);
   }
 
   update(): void {
     const speed = 100;
-    const jumpVelocity = -250;
+    const jumpVelocity = -300;
 
-    // Check if player is on the ground
-    const onGround = this.player.body?.blocked.down;
+    const onGround = this.player.body?.blocked.down ?? false;
     const velocityY = this.player.body?.velocity.y ?? 0;
     const isMovingHorizontally = this.cursors.left.isDown || this.cursors.right.isDown;
 
-    // Horizontal movement
     if (this.cursors.left.isDown) {
       this.player.setVelocityX(-speed);
       this.player.setFlipX(true);
@@ -222,64 +116,331 @@ export class GameScene extends Phaser.Scene {
       this.player.setVelocityX(0);
     }
 
-    // Jump (only when on ground and not attacking)
     if (this.cursors.up.isDown && onGround && !this.isAttacking) {
       this.player.setVelocityY(jumpVelocity);
     }
 
-    // Attack (spacebar, only when on ground and not already attacking)
     if (Phaser.Input.Keyboard.JustDown(this.attackKey) && onGround && !this.isAttacking) {
       this.isAttacking = true;
-      this.player.setVelocityX(0); // Stop movement during attack
+      this.player.setVelocityX(0);
       this.player.anims.play("char-blue-attack", true);
     }
 
-    // === ANIMATION STATE MACHINE ===
-    // Skip animation updates if attacking - let attack animation complete
     if (!this.isAttacking) {
       if (!onGround) {
-        // In the air
         if (velocityY < 0) {
-          // Rising - play jump animation
           this.player.anims.play("char-blue-jump", true);
         } else {
-          // Falling - play fall animation
           this.player.anims.play("char-blue-fall", true);
         }
+      } else if (isMovingHorizontally) {
+        this.player.anims.play("char-blue-run", true);
       } else {
-        // On the ground
-        if (isMovingHorizontally) {
-          // Moving - play run animation
-          this.player.anims.play("char-blue-run", true);
-        } else {
-          // Standing still - play idle animation
-          this.player.anims.play("char-blue-idle", true);
+        this.player.anims.play("char-blue-idle", true);
+      }
+    }
+
+    this.updateCamera();
+    this.updateParallax();
+  }
+
+  private createBackground(): void {
+    this.bgLayer1 = this.add.tileSprite(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, "oakwoods-bg-layer1")
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(-30);
+
+    this.bgLayer2 = this.add.tileSprite(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, "oakwoods-bg-layer2")
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(-20);
+
+    this.bgLayer3 = this.add.tileSprite(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, "oakwoods-bg-layer3")
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(-10);
+  }
+
+  private createAnimations(): void {
+    this.createAnimation("char-blue-idle", "oakwoods-char-blue", 0, 5, 8, -1);
+    this.createAnimation("char-blue-run", "oakwoods-char-blue", 16, 21, 10, -1);
+    this.createAnimation("char-blue-jump", "oakwoods-char-blue", 28, 31, 10, 0);
+    this.createAnimation("char-blue-fall", "oakwoods-char-blue", 35, 37, 10, 0);
+    this.createAnimation("char-blue-attack", "oakwoods-char-blue", 8, 13, 12, 0);
+    this.createAnimation("shop-idle", "oakwoods-shop-anim", 0, 5, 8, -1);
+  }
+
+  private createAnimation(
+    key: string,
+    texture: string,
+    start: number,
+    end: number,
+    frameRate: number,
+    repeat: number,
+  ): void {
+    if (this.anims.exists(key)) {
+      return;
+    }
+
+    this.anims.create({
+      key,
+      frames: this.anims.generateFrameNumbers(texture, { start, end }),
+      frameRate,
+      repeat,
+    });
+  }
+
+  private buildTerrain(level: LevelData): void {
+    this.worldWidth = level.width * TILE_SIZE;
+    this.solidGrid = this.createSolidGrid(level);
+
+    this.map = this.make.tilemap({
+      tileWidth: TILE_SIZE,
+      tileHeight: TILE_SIZE,
+      width: level.width,
+      height: level.height,
+    });
+
+    const tileset = this.map.addTilesetImage("oakwoods-tileset");
+    if (!tileset) {
+      throw new Error("Failed to load oakwoods tileset");
+    }
+
+    const layer = this.map.createBlankLayer("terrain", tileset, 0, LAYER_OFFSET_Y);
+    if (!layer) {
+      throw new Error("Failed to create terrain layer");
+    }
+
+    this.terrainLayer = layer.setDepth(0);
+
+    for (let y = 0; y < level.height; y += 1) {
+      for (let x = 0; x < level.width; x += 1) {
+        if (!this.isSolid(x, y)) {
+          continue;
+        }
+
+        const tileIndex = this.selectTerrainTile(x, y, level.width, level.height);
+        this.map.putTileAt(tileIndex, x, y, true, "terrain");
+      }
+    }
+
+    this.terrainLayer.setCollisionByExclusion([-1]);
+  }
+
+  private createSolidGrid(level: LevelData): boolean[][] {
+    const grid = Array.from({ length: level.height }, () => Array(level.width).fill(false));
+
+    for (const solid of level.solids) {
+      const startX = Phaser.Math.Clamp(solid.x, 0, level.width - 1);
+      const startY = Phaser.Math.Clamp(solid.y, 0, level.height - 1);
+      const endX = Phaser.Math.Clamp(solid.x + solid.width - 1, startX, level.width - 1);
+      const endY = Phaser.Math.Clamp(solid.y + solid.height - 1, startY, level.height - 1);
+
+      for (let y = startY; y <= endY; y += 1) {
+        for (let x = startX; x <= endX; x += 1) {
+          grid[y][x] = true;
         }
       }
     }
 
-    // === PARALLAX SCROLLING ===
-    // Scroll background layers based on camera position
+    return grid;
+  }
+
+  private paintInteriorFill(level: LevelData): void {
+    const graphics = this.add.graphics().setDepth(1);
+    graphics.fillStyle(0x251613, 1);
+
+    for (let y = 0; y < level.height; y += 1) {
+      let spanStart = -1;
+
+      for (let x = 0; x <= level.width; x += 1) {
+        const isInterior =
+          x < level.width
+          && this.isSolid(x, y)
+          && this.isSolid(x, y - 1)
+          && this.isSolid(x - 1, y)
+          && this.isSolid(x + 1, y);
+
+        if (isInterior && spanStart === -1) {
+          spanStart = x;
+        }
+
+        if ((!isInterior || x === level.width) && spanStart !== -1) {
+          const spanEnd = isInterior ? x : x - 1;
+          graphics.fillRect(
+            spanStart * TILE_SIZE,
+            LAYER_OFFSET_Y + (y * TILE_SIZE),
+            ((spanEnd - spanStart) + 1) * TILE_SIZE,
+            TILE_SIZE,
+          );
+          spanStart = -1;
+        }
+      }
+    }
+  }
+
+  private selectTerrainTile(x: number, y: number, levelWidth: number, levelHeight: number): number {
+    const aboveSolid = this.isSolid(x, y - 1);
+    const leftSolid = this.isSolid(x - 1, y);
+    const rightSolid = this.isSolid(x + 1, y);
+    const depth = this.getSurfaceDepth(x, y);
+    const normalizedDepth = Math.min(depth, 2);
+
+    if (!aboveSolid) {
+      if (!leftSolid && rightSolid) {
+        return TERRAIN_TILES.topLeft;
+      }
+      if (leftSolid && !rightSolid) {
+        return TERRAIN_TILES.topRight;
+      }
+      return this.pickFrom(TERRAIN_TILES.topCenter, x);
+    }
+
+    if (!leftSolid && rightSolid) {
+      return TERRAIN_TILES.leftWall[normalizedDepth];
+    }
+
+    if (leftSolid && !rightSolid) {
+      return TERRAIN_TILES.rightWall[normalizedDepth];
+    }
+
+    if (!leftSolid && !rightSolid) {
+      return depth === 0
+        ? this.pickFrom(TERRAIN_TILES.topCenter, x)
+        : this.pickFrom(TERRAIN_TILES.shallowFill, x + y);
+    }
+
+    if (y === levelHeight - 1 || x === 0 || x === levelWidth - 1) {
+      return this.pickFrom(TERRAIN_TILES.deepFill, x + y);
+    }
+
+    return depth <= 1
+      ? this.pickFrom(TERRAIN_TILES.shallowFill, x + y)
+      : this.pickFrom(TERRAIN_TILES.deepFill, x + y);
+  }
+
+  private pickFrom(tiles: readonly number[], seed: number): number {
+    return tiles[Math.abs(seed) % tiles.length];
+  }
+
+  private isSolid(x: number, y: number): boolean {
+    if (x < 0 || y < 0 || y >= this.solidGrid.length || x >= this.solidGrid[0].length) {
+      return false;
+    }
+
+    return this.solidGrid[y][x];
+  }
+
+  private getSurfaceDepth(x: number, y: number): number {
+    let depth = 0;
+    let cursor = y - 1;
+
+    while (this.isSolid(x, cursor)) {
+      depth += 1;
+      cursor -= 1;
+    }
+
+    return depth;
+  }
+
+  private placeProps(level: LevelData): void {
+    const backDepth = 6;
+    const frontDepth = 12;
+
+    for (const prop of level.props) {
+      const worldX = prop.x * TILE_SIZE;
+      const worldY = this.getSurfaceWorldY(prop.x) + (prop.offsetY ?? 0);
+      const depth = prop.depth === "front" ? frontDepth : backDepth;
+      const assetKey = this.getPropAssetKey(prop.type);
+
+      if (prop.type === "shop") {
+        const shop = this.add.sprite(worldX, worldY, assetKey, 0)
+          .setOrigin(0.5, 1)
+          .setDepth(depth);
+        shop.setFlipX(Boolean(prop.flipX));
+        shop.anims.play("shop-idle");
+        continue;
+      }
+
+      const image = this.add.image(worldX, worldY, assetKey)
+        .setOrigin(0.5, 1)
+        .setDepth(depth);
+
+      image.setFlipX(Boolean(prop.flipX));
+    }
+  }
+
+  private getPropAssetKey(propType: PropType): string {
+    const assetKeys: Record<PropType, string> = {
+      shop: "oakwoods-shop-anim",
+      lamp: "oakwoods-lamp",
+      sign: "oakwoods-sign",
+      fence1: "oakwoods-fence1",
+      fence2: "oakwoods-fence2",
+      rock1: "oakwoods-rock1",
+      rock2: "oakwoods-rock2",
+      rock3: "oakwoods-rock3",
+      grass1: "oakwoods-grass1",
+      grass2: "oakwoods-grass2",
+      grass3: "oakwoods-grass3",
+    };
+
+    return assetKeys[propType];
+  }
+
+  private getSurfaceWorldY(tileX: number): number {
+    const column = Phaser.Math.Clamp(Math.floor(tileX), 0, this.solidGrid[0].length - 1);
+
+    for (let y = 0; y < this.solidGrid.length; y += 1) {
+      if (this.solidGrid[y][column]) {
+        return LAYER_OFFSET_Y + (y * TILE_SIZE);
+      }
+    }
+
+    return LAYER_OFFSET_Y + ((this.solidGrid.length - 1) * TILE_SIZE);
+  }
+
+  private createPlayer(level: LevelData): void {
+    const spawnX = level.spawn.x * TILE_SIZE;
+    const spawnY = LAYER_OFFSET_Y + (level.spawn.y * TILE_SIZE) - 28;
+
+    this.player = this.physics.add.sprite(spawnX, spawnY, "oakwoods-char-blue", 0)
+      .setDepth(10);
+
+    this.player.setBounce(0);
+    this.player.body?.setSize(20, 38);
+    this.player.body?.setOffset(18, 16);
+
+    this.physics.add.collider(this.player, this.terrainLayer);
+
+    this.player.anims.play("char-blue-idle", true);
+    this.player.on("animationcomplete", (anim: Phaser.Animations.Animation) => {
+      if (anim.key === "char-blue-attack") {
+        this.isAttacking = false;
+      }
+    });
+  }
+
+  private configureCamera(level: LevelData): void {
+    this.physics.world.setBounds(0, 0, this.worldWidth, LAYER_OFFSET_Y + (level.height * TILE_SIZE));
+    this.player.setCollideWorldBounds(true);
+
+    this.cameras.main.setBounds(0, 0, this.worldWidth, VIEWPORT_HEIGHT);
+    this.cameras.main.scrollY = 0;
+  }
+
+  private updateCamera(): void {
+    const maxScrollX = Math.max(0, this.worldWidth - VIEWPORT_WIDTH);
+    const targetScrollX = Phaser.Math.Clamp(this.player.x - (VIEWPORT_WIDTH * 0.35), 0, maxScrollX);
+
+    this.cameras.main.scrollX = Phaser.Math.Linear(this.cameras.main.scrollX, targetScrollX, 0.12);
+    this.cameras.main.scrollY = 0;
+  }
+
+  private updateParallax(): void {
     const camX = this.cameras.main.scrollX;
-    this.bgLayer1.tilePositionX = camX * 0.1; // Slowest - furthest
-    this.bgLayer2.tilePositionX = camX * 0.3; // Medium
-    this.bgLayer3.tilePositionX = camX * 0.5; // Fastest - nearest
-
-    // === INFINITE GROUND GENERATION ===
-    // Generate more ground tiles as player approaches the edge
-    const playerTileX = Math.floor(this.player.x / 24);
-    const generateAhead = 20; // Generate 20 tiles ahead of player
-
-    if (playerTileX + generateAhead > this.groundGeneratedToX) {
-      // Generate more ground tiles
-      const tilesToGenerate = (playerTileX + generateAhead) - this.groundGeneratedToX;
-      for (let i = 0; i < tilesToGenerate; i++) {
-        const x = this.groundGeneratedToX + i;
-        if (x < 500) { // Don't exceed map width
-          this.map.putTileAt(0, x, 7, true, "ground");
-        }
-      }
-      this.groundGeneratedToX = Math.min(playerTileX + generateAhead, 500);
-    }
+    this.bgLayer1.tilePositionX = camX * 0.1;
+    this.bgLayer2.tilePositionX = camX * 0.3;
+    this.bgLayer3.tilePositionX = camX * 0.5;
   }
 }

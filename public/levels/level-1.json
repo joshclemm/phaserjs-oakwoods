@@ -1,0 +1,41 @@
+{
+  "version": 3,
+  "name": "Oak Woods Market Trail",
+  "width": 96,
+  "height": 10,
+  "spawn": {
+    "x": 4.5,
+    "y": 6
+  },
+  "solids": [
+    { "x": 0, "y": 6, "width": 96, "height": 4 },
+    { "x": 8, "y": 5, "width": 88, "height": 1 },
+    { "x": 23, "y": 4, "width": 8, "height": 1 },
+    { "x": 59, "y": 4, "width": 9, "height": 1 }
+  ],
+  "props": [
+    { "type": "rock3", "x": 3.0, "depth": "back" },
+    { "type": "grass2", "x": 4.2, "depth": "front" },
+    { "type": "grass1", "x": 7.8, "depth": "front" },
+    { "type": "sign", "x": 10.4, "depth": "back" },
+    { "type": "grass3", "x": 11.8, "depth": "front" },
+    { "type": "lamp", "x": 11.8, "depth": "back" },
+    { "type": "shop", "x": 14.1, "depth": "back" },
+    { "type": "grass1", "x": 17.2, "depth": "front" },
+    { "type": "fence1", "x": 27.8, "depth": "back" },
+    { "type": "fence2", "x": 31.1, "depth": "back" },
+    { "type": "rock2", "x": 35.2, "depth": "back" },
+    { "type": "grass2", "x": 38.8, "depth": "front" },
+    { "type": "lamp", "x": 43.1, "depth": "back" },
+    { "type": "rock1", "x": 47.0, "depth": "back" },
+    { "type": "grass1", "x": 51.3, "depth": "front" },
+    { "type": "grass2", "x": 58.6, "depth": "front" },
+    { "type": "fence1", "x": 64.2, "depth": "back" },
+    { "type": "fence2", "x": 68.0, "depth": "back" },
+    { "type": "rock3", "x": 73.4, "depth": "back" },
+    { "type": "grass3", "x": 76.2, "depth": "front" },
+    { "type": "lamp", "x": 83.0, "depth": "back" },
+    { "type": "grass1", "x": 87.1, "depth": "front" },
+    { "type": "rock2", "x": 92.1, "depth": "back" }
+  ]
+}
