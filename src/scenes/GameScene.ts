@@ -70,6 +70,8 @@ export class GameScene extends Phaser.Scene {
   private isAttacking = false;
   private solidGrid: boolean[][] = [];
   private worldWidth = VIEWPORT_WIDTH;
+  private spawnPoint = new Phaser.Math.Vector2();
+  private deathY = VIEWPORT_HEIGHT;
 
   constructor() {
     super("GameScene");
@@ -138,6 +140,11 @@ export class GameScene extends Phaser.Scene {
       } else {
         this.player.anims.play("char-blue-idle", true);
       }
+    }
+
+    if (this.player.y > this.deathY) {
+      this.respawnPlayer();
+      return;
     }
 
     this.updateCamera();
@@ -403,6 +410,7 @@ export class GameScene extends Phaser.Scene {
   private createPlayer(level: LevelData): void {
     const spawnX = level.spawn.x * TILE_SIZE;
     const spawnY = LAYER_OFFSET_Y + (level.spawn.y * TILE_SIZE) - 28;
+    this.spawnPoint.set(spawnX, spawnY);
 
     this.player = this.physics.add.sprite(spawnX, spawnY, "oakwoods-char-blue", 0)
       .setDepth(10);
@@ -422,11 +430,25 @@ export class GameScene extends Phaser.Scene {
   }
 
   private configureCamera(level: LevelData): void {
-    this.physics.world.setBounds(0, 0, this.worldWidth, LAYER_OFFSET_Y + (level.height * TILE_SIZE));
+    const worldHeight = LAYER_OFFSET_Y + (level.height * TILE_SIZE) + VIEWPORT_HEIGHT;
+    this.physics.world.setBounds(0, 0, this.worldWidth, worldHeight);
+    this.physics.world.setBoundsCollision(true, true, false, false);
     this.player.setCollideWorldBounds(true);
+    this.deathY = LAYER_OFFSET_Y + (level.height * TILE_SIZE) + 24;
 
     this.cameras.main.setBounds(0, 0, this.worldWidth, VIEWPORT_HEIGHT);
     this.cameras.main.scrollY = 0;
+  }
+
+  private respawnPlayer(): void {
+    this.player.setPosition(this.spawnPoint.x, this.spawnPoint.y);
+    this.player.setVelocity(0, 0);
+    this.player.setAcceleration(0, 0);
+    this.isAttacking = false;
+    this.player.anims.play("char-blue-idle", true);
+
+    const maxScrollX = Math.max(0, this.worldWidth - VIEWPORT_WIDTH);
+    this.cameras.main.scrollX = Phaser.Math.Clamp(this.spawnPoint.x - (VIEWPORT_WIDTH * 0.35), 0, maxScrollX);
   }
 
   private updateCamera(): void {
