@@ -1,12 +1,17 @@
 import Phaser from "phaser";
+import { applyAppMode, getAppMode } from "./appMode";
 import { BootScene } from "./scenes/BootScene";
+import { EditorScene } from "./scenes/EditorScene";
 import { GameScene } from "./scenes/GameScene";
+
+const appMode = getAppMode();
+applyAppMode(appMode);
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.CANVAS,
   width: 320,
   height: 180,
-  parent: "game-container",
+  parent: "game-stage",
   backgroundColor: "#1a1a1a",
   pixelArt: true,
   roundPixels: true,
@@ -21,7 +26,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, GameScene],
+  scene: [BootScene, EditorScene, GameScene],
 };
 
 new Phaser.Game(config);

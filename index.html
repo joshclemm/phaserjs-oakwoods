@@ -3,33 +3,405 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Oak Woods</title>
+    <title>Oak Woods Level Designer</title>
     <style>
+      :root {
+        color-scheme: dark;
+        --bg: #16110f;
+        --bg-elevated: rgba(31, 23, 20, 0.92);
+        --bg-soft: rgba(49, 37, 31, 0.88);
+        --stroke: rgba(255, 226, 189, 0.16);
+        --stroke-strong: rgba(255, 226, 189, 0.32);
+        --text: #f7ecdd;
+        --text-dim: #cdb8a1;
+        --accent: #d58f57;
+        --accent-strong: #f0b56b;
+        --danger: #d46b67;
+        --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      }
+
       * {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
       }
+
       body {
-        background-color: #1a1a1a;
-        display: flex;
-        justify-content: center;
-        align-items: center;
         min-height: 100vh;
+        background:
+          radial-gradient(circle at top, rgba(127, 78, 44, 0.28), transparent 34%),
+          linear-gradient(180deg, #241915 0%, var(--bg) 58%);
+        color: var(--text);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      #app-shell {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 280px minmax(360px, 1fr) 280px;
+        gap: 16px;
+        padding: 16px;
+      }
+
+      .editor-panel {
+        background: var(--bg-elevated);
+        border: 1px solid var(--stroke);
+        border-radius: 16px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(8px);
+      }
+
+      aside.editor-panel {
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      #workspace {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      #editor-toolbar,
+      #editor-statusbar {
+        padding: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+
+      #game-stage {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        padding: 16px;
+        min-height: 440px;
+        background:
+          linear-gradient(180deg, rgba(255, 210, 163, 0.07), transparent 45%),
+          rgba(12, 9, 8, 0.44);
+        border: 1px solid var(--stroke);
+        border-radius: 20px;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
         overflow: hidden;
+        touch-action: none;
       }
-      #game-container {
-        image-rendering: pixelated;
-        image-rendering: crisp-edges;
-      }
+
       canvas {
         image-rendering: pixelated;
         image-rendering: crisp-edges;
+        display: block;
+      }
+
+      h1 {
+        font-size: 1.15rem;
+        letter-spacing: 0.04em;
+      }
+
+      h2 {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--text-dim);
+        margin-bottom: 10px;
+      }
+
+      p,
+      li,
+      label,
+      span {
+        font-size: 0.92rem;
+      }
+
+      .stack {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .field-row,
+      .button-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .field-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .button-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        color: var(--text-dim);
+      }
+
+      .check {
+        flex-direction: row;
+        align-items: center;
+      }
+
+      input,
+      select,
+      button {
+        border: 1px solid var(--stroke);
+        background: var(--bg-soft);
+        color: var(--text);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font: inherit;
+      }
+
+      input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        padding: 0;
+      }
+
+      button {
+        cursor: pointer;
+        transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
+      }
+
+      button:hover {
+        border-color: var(--stroke-strong);
+        transform: translateY(-1px);
+      }
+
+      button[data-active="true"] {
+        background: linear-gradient(180deg, rgba(245, 171, 106, 0.28), rgba(129, 76, 37, 0.48));
+        border-color: rgba(255, 205, 143, 0.5);
+      }
+
+      button[data-variant="accent"] {
+        background: linear-gradient(180deg, rgba(229, 160, 88, 0.22), rgba(133, 72, 38, 0.52));
+        border-color: rgba(244, 190, 126, 0.42);
+      }
+
+      button[data-variant="danger"] {
+        background: linear-gradient(180deg, rgba(218, 115, 108, 0.18), rgba(111, 42, 45, 0.42));
+        border-color: rgba(212, 107, 103, 0.36);
+      }
+
+      button:disabled {
+        cursor: default;
+        opacity: 0.45;
+        transform: none;
+      }
+
+      .tool-label {
+        margin-right: 8px;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.72rem;
+      }
+
+      #editor-statusbar {
+        justify-content: space-between;
+        color: var(--text-dim);
+      }
+
+      #editor-statusbar span {
+        white-space: nowrap;
+      }
+
+      #editor-selection {
+        color: var(--text-dim);
+        line-height: 1.5;
+      }
+
+      ul {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        color: var(--text-dim);
+      }
+
+      body[data-app-mode="game"] #app-shell {
+        grid-template-columns: 1fr;
+        padding: 0;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      body[data-app-mode="game"] #editor-left,
+      body[data-app-mode="game"] #editor-right,
+      body[data-app-mode="game"] #editor-toolbar,
+      body[data-app-mode="game"] #editor-statusbar {
+        display: none;
+      }
+
+      body[data-app-mode="game"] #workspace {
+        min-height: 100vh;
+      }
+
+      body[data-app-mode="game"] #game-stage {
+        border: 0;
+        border-radius: 0;
+        min-height: 100vh;
+        background: transparent;
+      }
+
+      body[data-editor-state="playtest"] #editor-left,
+      body[data-editor-state="playtest"] #editor-right {
+        opacity: 0.72;
+      }
+
+      @media (max-width: 1180px) {
+        #app-shell {
+          grid-template-columns: 1fr;
+        }
+
+        #game-stage {
+          min-height: 320px;
+        }
       }
     </style>
   </head>
-  <body>
-    <div id="game-container"></div>
+  <body data-app-mode="editor" data-editor-state="editing">
+    <div id="app-shell">
+      <aside id="editor-left" class="editor-panel">
+        <div class="stack">
+          <h1>Oak Woods Level Designer</h1>
+          <p style="color: var(--text-dim); line-height: 1.5;">V1 blockout editor: terrain rectangles, props, spawn, undo/redo, JSON export, and instant playtest.</p>
+        </div>
+
+        <section class="stack">
+          <div>
+            <h2>Level</h2>
+            <div class="stack">
+              <label>
+                Name
+                <input id="editor-level-name" type="text" maxlength="48" value="Oak Woods Market Trail" />
+              </label>
+              <div class="field-row">
+                <label>
+                  Width
+                  <input id="editor-level-width" type="number" min="8" max="256" value="96" />
+                </label>
+                <label>
+                  Height
+                  <input id="editor-level-height" type="number" min="4" max="64" value="10" />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="button-grid">
+            <button id="editor-new-level">New Empty</button>
+            <button id="editor-resize-level">Resize</button>
+            <button id="editor-load-demo">Reload Demo</button>
+            <button id="editor-playtest" data-variant="accent">Playtest</button>
+          </div>
+        </section>
+
+        <section class="stack">
+          <div>
+            <h2>History</h2>
+            <div class="button-grid">
+              <button id="editor-undo">Undo</button>
+              <button id="editor-redo">Redo</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="stack">
+          <div>
+            <h2>Export</h2>
+            <div class="button-grid">
+              <button id="editor-export-json">Copy JSON</button>
+              <button id="editor-download-json">Download</button>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <main id="workspace">
+        <div id="editor-toolbar" class="editor-panel">
+          <span class="tool-label">Tools</span>
+          <button data-editor-tool="terrain-draw" data-active="true">1 Draw</button>
+          <button data-editor-tool="terrain-erase">2 Erase</button>
+          <button data-editor-tool="prop">3 Prop</button>
+          <button data-editor-tool="spawn">4 Spawn</button>
+          <button data-editor-tool="select">5 Select</button>
+        </div>
+
+        <div id="game-stage">
+        </div>
+
+        <div id="editor-statusbar" class="editor-panel">
+          <span id="editor-cursor">Tile -, -</span>
+          <span id="editor-status">Drag to add terrain. Two-finger scroll pans the view. Pinch to zoom.</span>
+        </div>
+      </main>
+
+      <aside id="editor-right" class="editor-panel">
+        <section class="stack">
+          <div>
+            <h2>Prop Palette</h2>
+            <div id="editor-prop-empty" class="stack">
+              <p>Nothing selected.</p>
+            </div>
+            <div id="editor-prop-details" class="stack" hidden>
+              <div class="stack">
+                <label>
+                  Type
+                  <select id="editor-prop-type"></select>
+                </label>
+                <label>
+                  Depth
+                  <select id="editor-prop-depth">
+                    <option value="back">Back</option>
+                    <option value="front">Front</option>
+                  </select>
+                </label>
+                <label class="check">
+                  <input id="editor-prop-flip" type="checkbox" />
+                  Flip X
+                </label>
+                <label>
+                  Offset Y
+                  <input id="editor-prop-offset-y" type="number" step="1" value="0" />
+                </label>
+              </div>
+
+              <div class="button-grid">
+                <button id="editor-nudge-left">Nudge Left</button>
+                <button id="editor-nudge-right">Nudge Right</button>
+                <button id="editor-delete-prop" data-variant="danger" style="grid-column: 1 / -1;">Delete Selected</button>
+              </div>
+              <p id="editor-selection">No prop selected. Use Select to pick one, or Prop to place a new object.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="stack">
+          <div>
+            <h2>Controls</h2>
+            <ul>
+              <li>Two-finger scroll pans the view on a trackpad.</li>
+              <li>Pinch on the trackpad to zoom the camera.</li>
+              <li>Hold <strong>Space</strong> or right-drag if you want grab-style panning.</li>
+              <li>Press <strong>Ctrl/Cmd+Z</strong> to undo and <strong>Shift+Ctrl/Cmd+Z</strong> to redo.</li>
+              <li>Press <strong>Esc</strong> in playtest to return to the editor.</li>
+            </ul>
+          </div>
+        </section>
+      </aside>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

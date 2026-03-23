@@ -1,4 +1,6 @@
 import Phaser from "phaser";
+import { getAppMode } from "../appMode";
+import { cloneLevelData, normalizeLevelData } from "../levels/levelData";
 
 interface AssetManifest {
   meta: {
@@ -156,7 +158,13 @@ export class BootScene extends Phaser.Scene {
         );
         return;
       }
-      this.scene.start("GameScene");
+
+      const level = normalizeLevelData(this.cache.json.get("oakwoods-level-1"));
+      const appMode = getAppMode();
+      this.registry.set("oakwoods-source-level", cloneLevelData(level));
+      this.registry.set("oakwoods-active-level", cloneLevelData(level));
+      this.registry.set("oakwoods-editor-enabled", appMode === "editor");
+      this.scene.start(appMode === "editor" ? "EditorScene" : "GameScene");
     });
 
     this.load.start();
