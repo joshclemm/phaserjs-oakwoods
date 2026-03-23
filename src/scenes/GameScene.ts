@@ -4,6 +4,10 @@ const TILE_SIZE = 24;
 const VIEWPORT_WIDTH = 320;
 const VIEWPORT_HEIGHT = 180;
 const LAYER_OFFSET_Y = 16;
+const WALK_SPEED = 100;
+const RUN_SPEED = 145;
+const BASE_JUMP_VELOCITY = -300;
+const HARD_JUMP_MULTIPLIER = 1.25;
 
 const TERRAIN_TILES = {
   topLeft: 0,
@@ -62,6 +66,7 @@ export class GameScene extends Phaser.Scene {
   private player!: Phaser.Physics.Arcade.Sprite;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private attackKey!: Phaser.Input.Keyboard.Key;
+  private runKey!: Phaser.Input.Keyboard.Key;
 
   private bgLayer1!: Phaser.GameObjects.TileSprite;
   private bgLayer2!: Phaser.GameObjects.TileSprite;
@@ -98,27 +103,31 @@ export class GameScene extends Phaser.Scene {
 
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.attackKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.X);
+    this.runKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
   }
 
   update(): void {
-    const speed = 100;
-    const jumpVelocity = -300;
-
     const onGround = this.player.body?.blocked.down ?? false;
     const velocityY = this.player.body?.velocity.y ?? 0;
     const isMovingHorizontally = this.cursors.left.isDown || this.cursors.right.isDown;
+    const jumpKey = this.cursors.up;
+    const isRunning = this.runKey.isDown;
+    const moveSpeed = isRunning ? RUN_SPEED : WALK_SPEED;
 
     if (this.cursors.left.isDown) {
-      this.player.setVelocityX(-speed);
+      this.player.setVelocityX(-moveSpeed);
       this.player.setFlipX(true);
     } else if (this.cursors.right.isDown) {
-      this.player.setVelocityX(speed);
+      this.player.setVelocityX(moveSpeed);
       this.player.setFlipX(false);
     } else {
       this.player.setVelocityX(0);
     }
 
-    if (this.cursors.up.isDown && onGround && !this.isAttacking) {
+    if (Phaser.Input.Keyboard.JustDown(jumpKey) && onGround && !this.isAttacking) {
+      const jumpVelocity = isRunning
+        ? BASE_JUMP_VELOCITY * HARD_JUMP_MULTIPLIER
+        : BASE_JUMP_VELOCITY;
       this.player.setVelocityY(jumpVelocity);
     }
 
