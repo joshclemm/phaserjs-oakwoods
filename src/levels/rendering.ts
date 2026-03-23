@@ -1,6 +1,14 @@
 import Phaser from "phaser";
-import { createSolidGrid, getPropAssetKey, getSurfaceWorldY, isSolid } from "./levelData";
+import { createSolidGrid, getSurfaceWorldY, isSolid } from "./levelData";
 import { LAYER_OFFSET_Y, VIEWPORT_HEIGHT, VIEWPORT_WIDTH, TILE_SIZE, type LevelData, type SolidGrid } from "./types";
+import {
+  getThemeDefinition,
+  getThemeManifest,
+  THEME_MANIFESTS_REGISTRY_KEY,
+  type ThemeAssetManifest,
+  type ThemeManifestAnimation,
+  type ThemeManifestMap,
+} from "../themes/themes";
 
 const TERRAIN_TILES = {
   topLeft: 0,
@@ -32,6 +40,50 @@ export interface RenderedProp {
 
 function getTerrainKey(x: number, y: number): string {
   return `${x}:${y}`;
+}
+
+function getThemeContext(scene: Phaser.Scene, themeId: string): {
+  theme: ReturnType<typeof getThemeDefinition>;
+  manifest: ThemeAssetManifest;
+} {
+  const theme = getThemeDefinition(themeId);
+  const manifests = scene.registry.get(THEME_MANIFESTS_REGISTRY_KEY) as ThemeManifestMap | undefined;
+  const manifest = getThemeManifest(theme.id, manifests);
+  return { theme, manifest };
+}
+
+function getRequiredAnimation(
+  animations: readonly ThemeManifestAnimation[] | undefined,
+  animationKey: string,
+  themeId: string,
+): ThemeManifestAnimation {
+  const animation = animations?.find((entry) => entry.key === animationKey);
+  if (!animation) {
+    throw new Error(`Missing animation "${animationKey}" for theme "${themeId}"`);
+  }
+
+  return animation;
+}
+
+function createAnimationIfNeeded(
+  scene: Phaser.Scene,
+  animationKey: string,
+  textureKey: string,
+  animation: ThemeManifestAnimation,
+): void {
+  if (scene.anims.exists(animationKey)) {
+    return;
+  }
+
+  scene.anims.create({
+    key: animationKey,
+    frames: scene.anims.generateFrameNumbers(textureKey, {
+      start: animation.startFrame,
+      end: animation.endFrame,
+    }),
+    frameRate: animation.frameRate,
+    repeat: animation.repeat,
+  });
 }
 
 function pickFrom(tiles: readonly number[], seed: number): number {
@@ -112,44 +164,65 @@ export function getTerrainTileIndex(
     ?? selectTerrainTile(grid, x, y, level.width, level.height);
 }
 
-export function createOakwoodsAnimations(scene: Phaser.Scene): void {
-  const animations = [
-    { key: "char-blue-idle", texture: "oakwoods-char-blue", start: 0, end: 5, frameRate: 8, repeat: -1 },
-    { key: "char-blue-run", texture: "oakwoods-char-blue", start: 16, end: 21, frameRate: 10, repeat: -1 },
-    { key: "char-blue-jump", texture: "oakwoods-char-blue", start: 28, end: 31, frameRate: 10, repeat: 0 },
-    { key: "char-blue-fall", texture: "oakwoods-char-blue", start: 35, end: 37, frameRate: 10, repeat: 0 },
-    { key: "char-blue-attack", texture: "oakwoods-char-blue", start: 8, end: 13, frameRate: 12, repeat: 0 },
-    { key: "shop-idle", texture: "oakwoods-shop-anim", start: 0, end: 5, frameRate: 8, repeat: -1 },
-  ] as const;
+export function createThemeAnimations(scene: Phaser.Scene, themeId: string): void {
+  const { theme, manifest } = getThemeContext(scene, themeId);
+  const playerAnimationSources = theme.player.animationSources;
+  const playerAnimationKeys = theme.player.animationKeys;
 
-  for (const animation of animations) {
-    if (scene.anims.exists(animation.key)) {
-      continue;
-    }
+  createAnimationIfNeeded(
+    scene,
+    playerAnimationKeys.idle,
+    theme.player.textureKey,
+    getRequiredAnimation(manifest.spritesheets.character.animations, playerAnimationSources.idle, theme.id),
+  );
+  createAnimationIfNeeded(
+    scene,
+    playerAnimationKeys.run,
+    theme.player.textureKey,
+    getRequiredAnimation(manifest.spritesheets.character.animations, playerAnimationSources.run, theme.id),
+  );
+  createAnimationIfNeeded(
+    scene,
+    playerAnimationKeys.jump,
+    theme.player.textureKey,
+    getRequiredAnimation(manifest.spritesheets.character.animations, playerAnimationSources.jump, theme.id),
+  );
+  createAnimationIfNeeded(
+    scene,
+    playerAnimationKeys.fall,
+    theme.player.textureKey,
+    getRequiredAnimation(manifest.spritesheets.character.animations, playerAnimationSources.fall, theme.id),
+  );
+  createAnimationIfNeeded(
+    scene,
+    playerAnimationKeys.attack,
+    theme.player.textureKey,
+    getRequiredAnimation(manifest.spritesheets.character.animations, playerAnimationSources.attack, theme.id),
+  );
 
-    scene.anims.create({
-      key: animation.key,
-      frames: scene.anims.generateFrameNumbers(animation.texture, {
-        start: animation.start,
-        end: animation.end,
-      }),
-      frameRate: animation.frameRate,
-      repeat: animation.repeat,
-    });
+  const shopAsset = theme.props.shop;
+  if (shopAsset?.animationKey && shopAsset.animationSourceKey) {
+    createAnimationIfNeeded(
+      scene,
+      shopAsset.animationKey,
+      shopAsset.textureKey,
+      getRequiredAnimation(manifest.spritesheets.decorations?.shop?.animations, shopAsset.animationSourceKey, theme.id),
+    );
   }
 }
 
-export function createParallaxBackground(scene: Phaser.Scene): ParallaxLayers {
+export function createParallaxBackground(scene: Phaser.Scene, themeId: string): ParallaxLayers {
+  const { theme } = getThemeContext(scene, themeId);
   return {
-    layer1: scene.add.tileSprite(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, "oakwoods-bg-layer1")
+    layer1: scene.add.tileSprite(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, theme.backgrounds.farKey)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(-30),
-    layer2: scene.add.tileSprite(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, "oakwoods-bg-layer2")
+    layer2: scene.add.tileSprite(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, theme.backgrounds.midKey)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(-20),
-    layer3: scene.add.tileSprite(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, "oakwoods-bg-layer3")
+    layer3: scene.add.tileSprite(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, theme.backgrounds.nearKey)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(-10),
@@ -163,6 +236,7 @@ export function updateParallax(layers: ParallaxLayers, cameraScrollX: number): v
 }
 
 export function renderTerrain(scene: Phaser.Scene, level: LevelData, grid = createSolidGrid(level)): RenderedTerrain {
+  const { theme } = getThemeContext(scene, level.theme);
   const terrainOverrideLookup = createTerrainOverrideLookup(level);
   const map = scene.make.tilemap({
     tileWidth: TILE_SIZE,
@@ -170,10 +244,10 @@ export function renderTerrain(scene: Phaser.Scene, level: LevelData, grid = crea
     width: level.width,
     height: level.height,
   });
-  const tileset = map.addTilesetImage("oakwoods-tileset");
+  const tileset = map.addTilesetImage(theme.tilesetKey);
 
   if (!tileset) {
-    throw new Error("Failed to load oakwoods tileset");
+    throw new Error(`Failed to load tileset for theme "${theme.id}"`);
   }
 
   const layer = map.createBlankLayer("terrain", tileset, 0, LAYER_OFFSET_Y);
@@ -233,6 +307,7 @@ export function renderTerrain(scene: Phaser.Scene, level: LevelData, grid = crea
 }
 
 export function renderProps(scene: Phaser.Scene, level: LevelData, solidGrid: SolidGrid): RenderedProp[] {
+  const { theme } = getThemeContext(scene, level.theme);
   const renderedProps: RenderedProp[] = [];
   const backDepth = 6;
   const frontDepth = 12;
@@ -241,19 +316,23 @@ export function renderProps(scene: Phaser.Scene, level: LevelData, solidGrid: So
     const worldX = prop.x * TILE_SIZE;
     const worldY = getSurfaceWorldY(solidGrid, prop.x) + (prop.offsetY ?? 0);
     const depth = prop.depth === "front" ? frontDepth : backDepth;
-    const assetKey = getPropAssetKey(prop.type);
+    const propAsset = theme.props[prop.type];
 
-    if (prop.type === "shop") {
-      const shop = scene.add.sprite(worldX, worldY, assetKey, 0)
-        .setOrigin(0.5, 1)
-        .setDepth(depth);
-      shop.setFlipX(Boolean(prop.flipX));
-      shop.anims.play("shop-idle");
-      renderedProps.push({ propIndex, display: shop });
+    if (!propAsset || !scene.textures.exists(propAsset.textureKey)) {
       return;
     }
 
-    const image = scene.add.image(worldX, worldY, assetKey)
+    if (propAsset.animationKey) {
+      const sprite = scene.add.sprite(worldX, worldY, propAsset.textureKey, 0)
+        .setOrigin(0.5, 1)
+        .setDepth(depth);
+      sprite.setFlipX(Boolean(prop.flipX));
+      sprite.anims.play(propAsset.animationKey);
+      renderedProps.push({ propIndex, display: sprite });
+      return;
+    }
+
+    const image = scene.add.image(worldX, worldY, propAsset.textureKey)
       .setOrigin(0.5, 1)
       .setDepth(depth);
     image.setFlipX(Boolean(prop.flipX));

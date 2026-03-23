@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { setEditorChromeState } from "../appMode";
 import { createSolidGrid, normalizeLevelData } from "../levels/levelData";
 import {
-  createOakwoodsAnimations,
+  createThemeAnimations,
   createParallaxBackground,
   renderProps,
   renderTerrain,
@@ -17,6 +17,7 @@ import {
   VIEWPORT_WIDTH,
   type LevelData,
 } from "../levels/types";
+import { getThemeDefinition } from "../themes/themes";
 
 const WALK_SPEED = 100;
 const RUN_SPEED = 145;
@@ -31,6 +32,7 @@ export class GameScene extends Phaser.Scene {
   private runKey!: Phaser.Input.Keyboard.Key;
   private background?: ParallaxLayers;
   private editorEnabled = false;
+  private theme = getThemeDefinition(null);
 
   private isAttacking = false;
   private solidGrid: boolean[][] = [];
@@ -58,9 +60,10 @@ export class GameScene extends Phaser.Scene {
 
     this.solidGrid = createSolidGrid(level);
     this.worldWidth = level.width * TILE_SIZE;
+    this.theme = getThemeDefinition(level.theme);
 
-    this.background = createParallaxBackground(this);
-    createOakwoodsAnimations(this);
+    this.background = createParallaxBackground(this, level.theme);
+    createThemeAnimations(this, level.theme);
 
     this.terrain = renderTerrain(this, level, this.solidGrid);
     this.terrain.layer.setCollisionByExclusion([-1]);
@@ -115,20 +118,20 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.attackKey) && onGround && !this.isAttacking) {
       this.isAttacking = true;
       this.player.setVelocityX(0);
-      this.player.anims.play("char-blue-attack", true);
+      this.player.anims.play(this.theme.player.animationKeys.attack, true);
     }
 
     if (!this.isAttacking) {
       if (!onGround) {
         if (velocityY < 0) {
-          this.player.anims.play("char-blue-jump", true);
+          this.player.anims.play(this.theme.player.animationKeys.jump, true);
         } else {
-          this.player.anims.play("char-blue-fall", true);
+          this.player.anims.play(this.theme.player.animationKeys.fall, true);
         }
       } else if (isMovingHorizontally) {
-        this.player.anims.play("char-blue-run", true);
+        this.player.anims.play(this.theme.player.animationKeys.run, true);
       } else {
-        this.player.anims.play("char-blue-idle", true);
+        this.player.anims.play(this.theme.player.animationKeys.idle, true);
       }
     }
 
@@ -167,7 +170,7 @@ export class GameScene extends Phaser.Scene {
     const spawnY = LAYER_OFFSET_Y + (level.spawn.y * TILE_SIZE) - 28;
     this.spawnPoint.set(spawnX, spawnY);
 
-    this.player = this.physics.add.sprite(spawnX, spawnY, "oakwoods-char-blue", 0)
+    this.player = this.physics.add.sprite(spawnX, spawnY, this.theme.player.textureKey, 0)
       .setDepth(10);
 
     this.player.setBounce(0);
@@ -178,9 +181,9 @@ export class GameScene extends Phaser.Scene {
       this.physics.add.collider(this.player, this.terrain.layer);
     }
 
-    this.player.anims.play("char-blue-idle", true);
+    this.player.anims.play(this.theme.player.animationKeys.idle, true);
     this.player.on("animationcomplete", (anim: Phaser.Animations.Animation) => {
-      if (anim.key === "char-blue-attack") {
+      if (anim.key === this.theme.player.animationKeys.attack) {
         this.isAttacking = false;
       }
     });
@@ -202,7 +205,7 @@ export class GameScene extends Phaser.Scene {
     this.player.setVelocity(0, 0);
     this.player.setAcceleration(0, 0);
     this.isAttacking = false;
-    this.player.anims.play("char-blue-idle", true);
+    this.player.anims.play(this.theme.player.animationKeys.idle, true);
 
     const maxScrollX = Math.max(0, this.worldWidth - VIEWPORT_WIDTH);
     this.cameras.main.scrollX = Phaser.Math.Clamp(this.spawnPoint.x - (VIEWPORT_WIDTH * 0.35), 0, maxScrollX);

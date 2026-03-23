@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { setEditorChromeState } from "../appMode";
-import { getEditorDomRefs, setActiveTerrainTileButton, setActiveToolButton, type EditorTool } from "../editor/dom";
+import { getEditorDomRefs, setActiveTerrainTileButton, setActiveToolButton, setPropTypeOptions, type EditorTool } from "../editor/dom";
 import {
   cloneLevelData,
   compressSolidGrid,
@@ -12,7 +12,7 @@ import {
   serializeLevel,
 } from "../levels/levelData";
 import {
-  createOakwoodsAnimations,
+  createThemeAnimations,
   createParallaxBackground,
   renderProps,
   renderTerrain,
@@ -30,6 +30,17 @@ import {
   type PropType,
   type SolidGrid,
 } from "../levels/types";
+import {
+  getThemeDefinition,
+  getThemeManifest,
+  getThemePropTypes,
+  getThemeTilesetColumns,
+  getThemeTilesetRows,
+  getThemeTilesetTileCount,
+  resolveThemeAssetUrl,
+  THEME_MANIFESTS_REGISTRY_KEY,
+  type ThemeManifestMap,
+} from "../themes/themes";
 
 interface PropDraft {
   type: PropType;
@@ -81,6 +92,8 @@ export class EditorScene extends Phaser.Scene {
   private redoStack: LevelData[] = [];
   private dragRect: DragRect | null = null;
   private terrainPaintStroke: TerrainPaintStroke | null = null;
+  private activeThemeId: string | null = null;
+  private terrainPaletteThemeId: string | null = null;
   private isPanning = false;
   private gestureZoomStart = 1;
   private lastPointerPosition = new Phaser.Math.Vector2();
@@ -101,9 +114,6 @@ export class EditorScene extends Phaser.Scene {
     setEditorChromeState("editing");
     this.input.mouse?.disableContextMenu();
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-
-    createOakwoodsAnimations(this);
-    this.background = createParallaxBackground(this);
 
     this.gridOverlay = this.add.graphics().setDepth(20);
     this.hoverOverlay = this.add.graphics().setDepth(24);
@@ -154,15 +164,18 @@ export class EditorScene extends Phaser.Scene {
     refs.downloadButton.addEventListener("click", () => this.downloadLevelJson(), { signal });
     refs.undoButton.addEventListener("click", () => this.undo(), { signal });
     refs.redoButton.addEventListener("click", () => this.redo(), { signal });
+    refs.levelTheme.addEventListener("change", () => this.handleThemeChange(refs.levelTheme.value), { signal });
     refs.terrainAutoButton.addEventListener("click", () => this.setSelectedTerrainTile(null), { signal });
-    for (const button of refs.terrainPaletteButtons) {
-      button.addEventListener("click", () => {
-        const tileIndex = Number(button.dataset.terrainTileIndex);
-        if (Number.isInteger(tileIndex)) {
-          this.setSelectedTerrainTile(tileIndex);
-        }
-      }, { signal });
-    }
+    refs.terrainPaletteGrid.addEventListener("click", (event) => {
+      const target = event.target;
+      const button = target instanceof HTMLElement
+        ? target.closest<HTMLButtonElement>("[data-terrain-tile-index]")
+        : null;
+      const tileIndex = Number(button?.dataset.terrainTileIndex);
+      if (Number.isInteger(tileIndex)) {
+        this.setSelectedTerrainTile(tileIndex);
+      }
+    }, { signal });
     refs.deletePropButton.addEventListener("click", () => this.deleteSelectedProp(), { signal });
     refs.nudgeLeftButton.addEventListener("click", () => this.nudgeSelectedProp(-0.5), { signal });
     refs.nudgeRightButton.addEventListener("click", () => this.nudgeSelectedProp(0.5), { signal });
@@ -455,13 +468,43 @@ export class EditorScene extends Phaser.Scene {
     this.finalizeLevelMutation(before, `Renamed level to ${trimmedName}.`);
   }
 
+  private handleThemeChange(nextThemeId: string): void {
+    const currentTheme = getThemeDefinition(this.level.theme);
+    const nextTheme = getThemeDefinition(nextThemeId);
+
+    if (currentTheme.id === nextTheme.id) {
+      this.syncUi();
+      return;
+    }
+
+    const before = cloneLevelData(this.level);
+    const clearedOverrides = this.level.terrainOverrides.length;
+    this.level.theme = nextTheme.id;
+    this.level.terrainOverrides = [];
+    const removedProps = this.pruneUnsupportedPropsForTheme();
+    if (removedProps > 0) {
+      this.selectedPropIndex = null;
+    }
+    this.selectedTerrainTile = null;
+    this.terrainPaletteThemeId = null;
+    this.ensureDraftPropTypeForTheme();
+    this.finalizeLevelMutation(
+      before,
+      [
+        `Switched theme to ${nextTheme.label}.`,
+        clearedOverrides > 0 ? "Cleared manual terrain paint overrides." : "",
+        removedProps > 0 ? `Removed ${removedProps} prop${removedProps === 1 ? "" : "s"} not supported by this theme.` : "",
+      ].filter(Boolean).join(" "),
+    );
+  }
+
   private handleNewLevel(): void {
     const refs = getEditorDomRefs();
     this.replaceLevel(
       createEmptyLevel(
       Number(refs.levelWidth.value),
       Number(refs.levelHeight.value),
-      refs.levelName.value.trim() || "Untitled Oak Woods Level",
+      refs.levelName.value.trim() || "Untitled Level",
       ),
       "Created a new empty level.",
       { resetCamera: true, clearSelection: true },
@@ -514,6 +557,12 @@ export class EditorScene extends Phaser.Scene {
   }
 
   private placeProp(tileX: number): void {
+    if (!this.ensureDraftPropTypeForTheme()) {
+      this.syncUi();
+      this.setStatus("This theme has no placeable props configured yet.");
+      return;
+    }
+
     const before = cloneLevelData(this.level);
     this.level.props.push(this.createPropFromDraft(tileX));
     this.selectedPropIndex = this.level.props.length - 1;
@@ -598,6 +647,56 @@ export class EditorScene extends Phaser.Scene {
 
   private pruneTerrainOverridesToSolids(): void {
     this.level.terrainOverrides = this.level.terrainOverrides.filter((override) => this.solidGrid[override.y]?.[override.x] === true);
+  }
+
+  private syncThemeSceneState(): void {
+    const theme = getThemeDefinition(this.level.theme);
+    if (this.activeThemeId === theme.id && this.background) {
+      return;
+    }
+
+    this.background?.layer1.destroy();
+    this.background?.layer2.destroy();
+    this.background?.layer3.destroy();
+    createThemeAnimations(this, theme.id);
+    this.background = createParallaxBackground(this, theme.id);
+    this.activeThemeId = theme.id;
+  }
+
+  private syncTerrainPalette(): void {
+    const theme = getThemeDefinition(this.level.theme);
+    if (this.terrainPaletteThemeId === theme.id) {
+      return;
+    }
+
+    const refs = getEditorDomRefs();
+    const manifests = this.registry.get(THEME_MANIFESTS_REGISTRY_KEY) as ThemeManifestMap | undefined;
+    const manifest = getThemeManifest(theme.id, manifests);
+    const tileCount = getThemeTilesetTileCount(manifest);
+    const columns = getThemeTilesetColumns(manifest);
+    const rows = getThemeTilesetRows(manifest);
+    const tilesetUrl = resolveThemeAssetUrl(manifest, manifest.tilesets.main.path);
+    const previewTileSize = 32;
+    const fragment = document.createDocumentFragment();
+
+    refs.terrainPaletteGrid.replaceChildren();
+
+    for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
+      const button = document.createElement("button");
+      const column = tileIndex % columns;
+      const row = Math.floor(tileIndex / columns);
+      button.type = "button";
+      button.className = "terrain-swatch";
+      button.dataset.terrainTileIndex = String(tileIndex);
+      button.title = `${theme.label} tile ${tileIndex}`;
+      button.style.backgroundImage = `url("${tilesetUrl}")`;
+      button.style.backgroundSize = `${columns * previewTileSize}px ${rows * previewTileSize}px`;
+      button.style.backgroundPosition = `-${column * previewTileSize}px -${row * previewTileSize}px`;
+      fragment.append(button);
+    }
+
+    refs.terrainPaletteGrid.append(fragment);
+    this.terrainPaletteThemeId = theme.id;
   }
 
   private deleteSelectedProp(): void {
@@ -804,6 +903,8 @@ export class EditorScene extends Phaser.Scene {
   }
 
   private rebuildLevelVisuals(resetCamera = false): void {
+    const theme = getThemeDefinition(this.level.theme);
+    this.syncThemeSceneState();
     this.terrain?.layer.destroy();
     this.terrain?.interiorFill.destroy();
     this.terrain?.map.destroy();
@@ -817,12 +918,12 @@ export class EditorScene extends Phaser.Scene {
     this.spawnMarker = this.add.sprite(
       this.level.spawn.x * TILE_SIZE,
       LAYER_OFFSET_Y + (this.level.spawn.y * TILE_SIZE) - 28,
-      "oakwoods-char-blue",
+      theme.player.textureKey,
       0,
     )
       .setDepth(14)
       .setAlpha(0.7);
-    this.spawnMarker.anims.play("char-blue-idle");
+    this.spawnMarker.anims.play(theme.player.animationKeys.idle);
 
     this.redrawGrid();
     this.redrawSelectionOverlay();
@@ -870,18 +971,22 @@ export class EditorScene extends Phaser.Scene {
 
   private syncUi(): void {
     const refs = getEditorDomRefs();
+    this.ensureDraftPropTypeForTheme();
     const selectedProp = this.selectedPropIndex !== null ? this.level.props[this.selectedPropIndex] : undefined;
     const propSettings = selectedProp
       ? this.createDraftFromProp(selectedProp)
       : this.draftProp;
+    const availablePropTypes = this.getAvailablePropTypes();
 
     refs.levelName.value = this.level.name;
+    refs.levelTheme.value = getThemeDefinition(this.level.theme).id;
     refs.levelWidth.value = String(this.level.width);
     refs.levelHeight.value = String(this.level.height);
+    this.syncTerrainPalette();
     refs.terrainSelection.textContent = this.selectedTerrainTile === null
       ? "Selected terrain sprite: Auto."
       : `Selected terrain sprite: Tile ${this.selectedTerrainTile}.`;
-    refs.propType.value = propSettings.type;
+    setPropTypeOptions(refs.propType, availablePropTypes, propSettings.type);
     refs.propDepth.value = propSettings.depth;
     refs.propFlip.checked = propSettings.flipX;
     refs.propOffsetY.value = String(propSettings.offsetY);
@@ -903,9 +1008,13 @@ export class EditorScene extends Phaser.Scene {
 
   private readPropDraftFromDom(): PropDraft {
     const refs = getEditorDomRefs();
+    const availablePropTypes = this.getAvailablePropTypes();
+    const selectedType = availablePropTypes.includes(refs.propType.value as PropType)
+      ? refs.propType.value as PropType
+      : availablePropTypes[0] ?? this.draftProp.type;
 
     return {
-      type: refs.propType.value as PropType,
+      type: selectedType,
       depth: refs.propDepth.value === "front" ? "front" : "back",
       flipX: refs.propFlip.checked,
       offsetY: Number.isFinite(Number(refs.propOffsetY.value)) ? Math.round(Number(refs.propOffsetY.value)) : 0,
@@ -973,6 +1082,33 @@ export class EditorScene extends Phaser.Scene {
       flipX: this.draftProp.flipX ? true : undefined,
       offsetY: this.draftProp.offsetY !== 0 ? this.draftProp.offsetY : undefined,
     };
+  }
+
+  private getAvailablePropTypes(): PropType[] {
+    return getThemePropTypes(this.level.theme);
+  }
+
+  private ensureDraftPropTypeForTheme(): boolean {
+    const availablePropTypes = this.getAvailablePropTypes();
+    if (availablePropTypes.length === 0) {
+      return false;
+    }
+
+    if (!availablePropTypes.includes(this.draftProp.type)) {
+      this.draftProp = {
+        ...this.draftProp,
+        type: availablePropTypes[0],
+      };
+    }
+
+    return true;
+  }
+
+  private pruneUnsupportedPropsForTheme(): number {
+    const availablePropTypes = new Set(this.getAvailablePropTypes());
+    const beforeCount = this.level.props.length;
+    this.level.props = this.level.props.filter((prop) => availablePropTypes.has(prop.type));
+    return beforeCount - this.level.props.length;
   }
 
   private replaceLevel(

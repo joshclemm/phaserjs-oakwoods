@@ -1,6 +1,7 @@
 {
-  "version": 4,
+  "version": 6,
   "name": "Oak Woods Market Trail",
+  "theme": "woods",
   "width": 96,
   "height": 10,
   "spawn": {
@@ -20,6 +21,7 @@
     { "x": 67, "y": 4, "width": 3, "height": 1 },
     { "x": 71, "y": 6, "width": 25, "height": 4 }
   ],
+  "terrainOverrides": [],
   "props": [
     { "type": "rock3", "x": 3.0, "depth": "back" },
     { "type": "grass2", "x": 4.2, "depth": "front" },

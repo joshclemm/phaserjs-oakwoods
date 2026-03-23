@@ -1,0 +1,162 @@
+{
+  "meta": {
+    "name": "Irwin",
+    "author": "Josh Clemm",
+    "description": "Irwin theme assets.",
+    "basePath": "assets/irwin"
+  },
+  "images": {
+    "backgrounds": [
+      {
+        "key": "irwin-bg-layer1",
+        "path": "background/background_layer_1.png",
+        "width": 320,
+        "height": 180,
+        "description": "Placeholder far background"
+      },
+      {
+        "key": "irwin-bg-layer2",
+        "path": "background/background_layer_2.png",
+        "width": 320,
+        "height": 180,
+        "description": "Placeholder mid background"
+      },
+      {
+        "key": "irwin-bg-layer3",
+        "path": "background/background_layer_3.png",
+        "width": 320,
+        "height": 180,
+        "description": "Placeholder near background"
+      }
+    ],
+    "decorations": [
+      {
+        "key": "irwin-grass1",
+        "path": "decorations/grass_1.png",
+        "width": 8,
+        "height": 3
+      },
+      {
+        "key": "irwin-grass2",
+        "path": "decorations/grass_2.png",
+        "width": 10,
+        "height": 5
+      },
+      {
+        "key": "irwin-grass3",
+        "path": "decorations/grass_3.png",
+        "width": 9,
+        "height": 4
+      },
+      {
+        "key": "irwin-lamp",
+        "path": "decorations/lamp.png",
+        "width": 23,
+        "height": 57
+      },
+      {
+        "key": "irwin-rock1",
+        "path": "decorations/rock_1.png",
+        "width": 20,
+        "height": 11
+      },
+      {
+        "key": "irwin-rock2",
+        "path": "decorations/rock_2.png",
+        "width": 27,
+        "height": 12
+      },
+      {
+        "key": "irwin-rock3",
+        "path": "decorations/rock_3.png",
+        "width": 45,
+        "height": 18
+      },
+      {
+        "key": "irwin-shop",
+        "path": "decorations/shop.png",
+        "width": 118,
+        "height": 98
+      },
+      {
+        "key": "irwin-sign",
+        "path": "decorations/sign.png",
+        "width": 22,
+        "height": 31
+      }
+    ]
+  },
+  "spritesheets": {
+    "character": {
+      "key": "irwin-char-blue",
+      "path": "character/char_blue.png",
+      "frameWidth": 56,
+      "frameHeight": 56,
+      "animations": [
+        {
+          "key": "char-blue-idle",
+          "startFrame": 0,
+          "endFrame": 5,
+          "frameRate": 8,
+          "repeat": -1
+        },
+        {
+          "key": "char-blue-attack",
+          "startFrame": 8,
+          "endFrame": 13,
+          "frameRate": 12,
+          "repeat": 0
+        },
+        {
+          "key": "char-blue-run",
+          "startFrame": 16,
+          "endFrame": 21,
+          "frameRate": 10,
+          "repeat": -1
+        },
+        {
+          "key": "char-blue-jump",
+          "startFrame": 28,
+          "endFrame": 31,
+          "frameRate": 10,
+          "repeat": 0
+        },
+        {
+          "key": "char-blue-fall",
+          "startFrame": 35,
+          "endFrame": 37,
+          "frameRate": 10,
+          "repeat": 0
+        }
+      ]
+    },
+    "decorations": {
+      "shop": {
+        "key": "irwin-shop-anim",
+        "path": "decorations/shop_anim.png",
+        "frameWidth": 118,
+        "frameHeight": 128,
+        "animations": [
+          {
+            "key": "shop-idle",
+            "startFrame": 0,
+            "endFrame": 5,
+            "frameRate": 8,
+            "repeat": -1
+          }
+        ]
+      }
+    }
+  },
+  "tilesets": {
+    "main": {
+      "key": "irwin-tileset",
+      "path": "tileset-remo.png",
+      "tileWidth": 24,
+      "tileHeight": 24,
+      "columns": 21,
+      "rows": 15,
+      "totalTiles": 315
+    }
+  }
+}

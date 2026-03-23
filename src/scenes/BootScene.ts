@@ -1,52 +1,14 @@
 import Phaser from "phaser";
 import { getAppMode } from "../appMode";
 import { cloneLevelData, normalizeLevelData } from "../levels/levelData";
+import {
+  getThemeDefinitions,
+  THEME_MANIFESTS_REGISTRY_KEY,
+  type ThemeAssetManifest,
+  type ThemeManifestMap,
+} from "../themes/themes";
 
-interface AssetManifest {
-  meta: {
-    basePath: string;
-  };
-  images: {
-    backgrounds: Array<{ key: string; path: string }>;
-    decorations: Array<{ key: string; path: string }>;
-  };
-  spritesheets: {
-    character: {
-      key: string;
-      path: string;
-      frameWidth: number;
-      frameHeight: number;
-      animations: Array<{
-        key: string;
-        startFrame: number;
-        endFrame: number;
-        frameRate: number;
-        repeat: number;
-      }>;
-    };
-    decorations?: {
-      shop?: {
-        key: string;
-        path: string;
-        frameWidth: number;
-        frameHeight: number;
-        animations: Array<{
-          key: string;
-          startFrame: number;
-          endFrame: number;
-          frameRate: number;
-          repeat: number;
-        }>;
-      };
-    };
-  };
-  tilesets: {
-    main: {
-      key: string;
-      path: string;
-    };
-  };
-}
+const MISSING_FILES_REGISTRY_KEY = "game-missing-files";
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -57,11 +19,11 @@ export class BootScene extends Phaser.Scene {
     // If art assets are missing, the loader will fail. Track failures so we can
     // show an actionable message instead of starting the game with missing textures.
     this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: any) => {
-      const list = (this.registry.get("oakwoods-missing-files") as string[] | undefined) ?? [];
+      const list = (this.registry.get(MISSING_FILES_REGISTRY_KEY) as string[] | undefined) ?? [];
       const key = typeof file?.key === "string" ? file.key : "unknown";
       const url = typeof file?.url === "string" ? file.url : undefined;
       list.push(url ? `${key} (${url})` : key);
-      this.registry.set("oakwoods-missing-files", list);
+      this.registry.set(MISSING_FILES_REGISTRY_KEY, list);
     });
 
     // Display loading text
@@ -73,21 +35,37 @@ export class BootScene extends Phaser.Scene {
       color: "#ffffff",
     }).setOrigin(0.5);
 
-    // Load the asset manifest
-    this.load.json("oakwoods-manifest", "assets/oakwoods/assets.json");
+    for (const theme of getThemeDefinitions()) {
+      this.load.json(theme.manifestCacheKey, theme.manifestPath);
+    }
+
+    this.load.json("oakwoods-level-1", "levels/level-1.json");
   }
 
   create(): void {
-    const manifest = this.cache.json.get("oakwoods-manifest") as AssetManifest;
-    if (!manifest?.meta?.basePath) {
+    const themeManifests: ThemeManifestMap = {};
+    const missingManifests: string[] = [];
+
+    for (const theme of getThemeDefinitions()) {
+      const manifest = this.cache.json.get(theme.manifestCacheKey) as ThemeAssetManifest | undefined;
+      if (!manifest?.meta?.basePath) {
+        missingManifests.push(theme.manifestPath);
+        continue;
+      }
+
+      themeManifests[theme.id] = manifest;
+    }
+
+    if (missingManifests.length > 0) {
       const width = this.cameras.main.width;
       const height = this.cameras.main.height;
       this.add.text(
         10,
         10,
         [
-          "Missing manifest:",
-          "public/assets/oakwoods/assets.json",
+          "Missing theme manifest data.",
+          "",
+          ...missingManifests.map((path) => `- public/${path}`),
           "",
           "See the repo README for setup.",
         ].join("\n"),
@@ -96,45 +74,40 @@ export class BootScene extends Phaser.Scene {
       return;
     }
 
-    const basePath = manifest.meta.basePath;
+    for (const manifest of Object.values(themeManifests)) {
+      const basePath = manifest.meta.basePath;
 
-    // Queue all assets for loading
-    // Background images
-    for (const bg of manifest.images.backgrounds) {
-      this.load.image(bg.key, `${basePath}/${bg.path}`);
-    }
+      for (const bg of manifest.images.backgrounds) {
+        this.load.image(bg.key, `${basePath}/${bg.path}`);
+      }
 
-    // Decoration images (for future use)
-    for (const dec of manifest.images.decorations) {
-      this.load.image(dec.key, `${basePath}/${dec.path}`);
-    }
+      for (const decoration of manifest.images.decorations) {
+        this.load.image(decoration.key, `${basePath}/${decoration.path}`);
+      }
 
-    // Character spritesheet
-    const char = manifest.spritesheets.character;
-    this.load.spritesheet(char.key, `${basePath}/${char.path}`, {
-      frameWidth: char.frameWidth,
-      frameHeight: char.frameHeight,
-    });
-
-    const shop = manifest.spritesheets.decorations?.shop;
-    if (shop) {
-      this.load.spritesheet(shop.key, `${basePath}/${shop.path}`, {
-        frameWidth: shop.frameWidth,
-        frameHeight: shop.frameHeight,
+      const character = manifest.spritesheets.character;
+      this.load.spritesheet(character.key, `${basePath}/${character.path}`, {
+        frameWidth: character.frameWidth,
+        frameHeight: character.frameHeight,
       });
+
+      const shop = manifest.spritesheets.decorations?.shop;
+      if (shop) {
+        this.load.spritesheet(shop.key, `${basePath}/${shop.path}`, {
+          frameWidth: shop.frameWidth,
+          frameHeight: shop.frameHeight,
+        });
+      }
+
+      const tileset = manifest.tilesets.main;
+      this.load.image(tileset.key, `${basePath}/${tileset.path}`);
     }
 
-    // Tileset image
-    const tileset = manifest.tilesets.main;
-    this.load.image(tileset.key, `${basePath}/${tileset.path}`);
-    this.load.json("oakwoods-level-1", "levels/level-1.json");
-
-    // Store manifest in registry for other scenes
-    this.registry.set("oakwoods-manifest", manifest);
+    this.registry.set(THEME_MANIFESTS_REGISTRY_KEY, themeManifests);
 
     // Start loading and transition to GameScene when complete
     this.load.once("complete", () => {
-      const missing = (this.registry.get("oakwoods-missing-files") as string[] | undefined) ?? [];
+      const missing = (this.registry.get(MISSING_FILES_REGISTRY_KEY) as string[] | undefined) ?? [];
       if (missing.length > 0) {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
@@ -143,10 +116,7 @@ export class BootScene extends Phaser.Scene {
           10,
           10,
           [
-            "Missing Oak Woods art assets.",
-            "",
-            "Download + extract the pack into:",
-            "public/assets/oakwoods/",
+            "Missing theme art assets.",
             "",
             "Example missing files:",
             preview,

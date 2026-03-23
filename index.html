@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Oak Woods Level Designer</title>
+    <title>Level Designer</title>
     <style>
       :root {
         color-scheme: dark;
@@ -305,8 +305,8 @@
     <div id="app-shell">
       <aside id="editor-left" class="editor-panel">
         <div class="stack">
-          <h1>Oak Woods Level Designer</h1>
-          <p style="color: var(--text-dim); line-height: 1.5;">Block out collision, then paint exact terrain sprites from the Oak Woods sheet. Props, spawn, undo/redo, JSON export, and instant playtest stay in the same flow.</p>
+          <h1>Level Designer</h1>
+          <p style="color: var(--text-dim); line-height: 1.5;">Pick a theme, block out collision, then paint exact terrain sprites from that pack. Props, spawn, undo/redo, JSON export, and instant playtest stay in the same flow.</p>
         </div>
 
         <section class="stack">
@@ -315,7 +315,11 @@
             <div class="stack">
               <label>
                 Name
-                <input id="editor-level-name" type="text" maxlength="48" value="Oak Woods Market Trail" />
+                <input id="editor-level-name" type="text" maxlength="48" value="Market Trail" />
+              </label>
+              <label>
+                Theme
+                <select id="editor-level-theme"></select>
               </label>
               <div class="field-row">
                 <label>
@@ -387,7 +391,7 @@
               <button id="editor-terrain-auto">Auto Terrain</button>
               <p id="editor-terrain-selection">Selected terrain sprite: Auto.</p>
               <div id="editor-terrain-grid" class="terrain-grid"></div>
-              <p style="color: var(--text-dim); line-height: 1.5;">Use Paint to stamp any tilesheet sprite onto solid cells. Choose Auto to clear a manual override back to autotile.</p>
+              <p style="color: var(--text-dim); line-height: 1.5;">Use Paint to stamp any tilesheet sprite from the active theme onto solid cells. Choose Auto to clear a manual override back to autotile.</p>
             </div>
           </div>
         </section>

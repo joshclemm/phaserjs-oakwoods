@@ -1,7 +1,6 @@
 import {
   LAYER_OFFSET_Y,
   LEVEL_VERSION,
-  OAK_WOODS_TILESET_TILE_COUNT,
   PROP_TYPES,
   TILE_SIZE,
   type LevelData,
@@ -12,6 +11,7 @@ import {
   type SolidGrid,
   type TerrainTileOverride,
 } from "./types";
+import { DEFAULT_THEME_ID, resolveThemeId } from "../themes/themes";
 
 const PROP_TYPE_SET = new Set<string>(PROP_TYPES);
 
@@ -82,7 +82,7 @@ function sanitizeTerrainOverride(override: TerrainTileOverride, width: number, h
   const y = Math.floor(override.y);
   const tile = Math.floor(override.tile);
 
-  if (x < 0 || y < 0 || x >= width || y >= height || tile < 0 || tile >= OAK_WOODS_TILESET_TILE_COUNT) {
+  if (x < 0 || y < 0 || x >= width || y >= height || tile < 0) {
     return null;
   }
 
@@ -107,6 +107,7 @@ export function cloneLevelData(level: LevelData): LevelData {
   return {
     version: level.version,
     name: level.name,
+    theme: level.theme,
     width: level.width,
     height: level.height,
     spawn: {
@@ -119,13 +120,14 @@ export function cloneLevelData(level: LevelData): LevelData {
   };
 }
 
-export function createEmptyLevel(width = 64, height = 12, name = "Untitled Oak Woods Level"): LevelData {
+export function createEmptyLevel(width = 64, height = 12, name = "Untitled Level"): LevelData {
   const safeWidth = toSafeInteger(width, 64, 8, 256);
   const safeHeight = toSafeInteger(height, 12, 4, 64);
 
   return {
     version: LEVEL_VERSION,
     name,
+    theme: DEFAULT_THEME_ID,
     width: safeWidth,
     height: safeHeight,
     spawn: {
@@ -148,7 +150,8 @@ export function normalizeLevelData(raw: unknown): LevelData {
   const height = toSafeInteger(Number(level.height), 12, 4, 64);
   const name = typeof level.name === "string" && level.name.trim().length > 0
     ? level.name.trim()
-    : "Untitled Oak Woods Level";
+    : "Untitled Level";
+  const theme = resolveThemeId(level.theme);
   const solids = Array.isArray(level.solids)
     ? level.solids
       .map((solid) => sanitizeSolidRect(solid, width, height))
@@ -167,6 +170,7 @@ export function normalizeLevelData(raw: unknown): LevelData {
   return {
     version: Number.isFinite(level.version) ? Number(level.version) : LEVEL_VERSION,
     name,
+    theme,
     width,
     height,
     spawn: {
@@ -268,24 +272,6 @@ export function resizeLevel(level: LevelData, nextWidth: number, nextHeight: num
 
 export function serializeLevel(level: LevelData): string {
   return `${JSON.stringify(normalizeLevelData(level), null, 2)}\n`;
-}
-
-export function getPropAssetKey(propType: PropType): string {
-  const assetKeys: Record<PropType, string> = {
-    shop: "oakwoods-shop-anim",
-    lamp: "oakwoods-lamp",
-    sign: "oakwoods-sign",
-    fence1: "oakwoods-fence1",
-    fence2: "oakwoods-fence2",
-    rock1: "oakwoods-rock1",
-    rock2: "oakwoods-rock2",
-    rock3: "oakwoods-rock3",
-    grass1: "oakwoods-grass1",
-    grass2: "oakwoods-grass2",
-    grass3: "oakwoods-grass3",
-  };
-
-  return assetKeys[propType];
 }
 
 export function isSolid(grid: SolidGrid, x: number, y: number): boolean {
