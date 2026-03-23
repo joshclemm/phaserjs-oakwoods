@@ -1,6 +1,7 @@
 import {
   LAYER_OFFSET_Y,
   LEVEL_VERSION,
+  OAK_WOODS_TILESET_TILE_COUNT,
   PROP_TYPES,
   TILE_SIZE,
   type LevelData,
@@ -9,6 +10,7 @@ import {
   type PropDepth,
   type PropType,
   type SolidGrid,
+  type TerrainTileOverride,
 } from "./types";
 
 const PROP_TYPE_SET = new Set<string>(PROP_TYPES);
@@ -71,6 +73,36 @@ function sanitizeSolidRect(rect: LevelSolidRect, width: number, height: number):
   };
 }
 
+function sanitizeTerrainOverride(override: TerrainTileOverride, width: number, height: number): TerrainTileOverride | null {
+  if (!Number.isFinite(override.x) || !Number.isFinite(override.y) || !Number.isFinite(override.tile)) {
+    return null;
+  }
+
+  const x = Math.floor(override.x);
+  const y = Math.floor(override.y);
+  const tile = Math.floor(override.tile);
+
+  if (x < 0 || y < 0 || x >= width || y >= height || tile < 0 || tile >= OAK_WOODS_TILESET_TILE_COUNT) {
+    return null;
+  }
+
+  return { x, y, tile };
+}
+
+function createSolidGridFromRects(width: number, height: number, solids: LevelSolidRect[]): SolidGrid {
+  const grid = Array.from({ length: height }, () => Array(width).fill(false));
+
+  for (const solid of solids) {
+    for (let y = solid.y; y < solid.y + solid.height; y += 1) {
+      for (let x = solid.x; x < solid.x + solid.width; x += 1) {
+        grid[y][x] = true;
+      }
+    }
+  }
+
+  return grid;
+}
+
 export function cloneLevelData(level: LevelData): LevelData {
   return {
     version: level.version,
@@ -82,6 +114,7 @@ export function cloneLevelData(level: LevelData): LevelData {
       y: level.spawn.y,
     },
     solids: level.solids.map((solid) => ({ ...solid })),
+    terrainOverrides: level.terrainOverrides.map((override) => ({ ...override })),
     props: level.props.map((prop) => ({ ...prop })),
   };
 }
@@ -100,6 +133,7 @@ export function createEmptyLevel(width = 64, height = 12, name = "Untitled Oak W
       y: Math.max(0, safeHeight - 4),
     },
     solids: [],
+    terrainOverrides: [],
     props: [],
   };
 }
@@ -120,6 +154,12 @@ export function normalizeLevelData(raw: unknown): LevelData {
       .map((solid) => sanitizeSolidRect(solid, width, height))
       .filter((solid): solid is LevelSolidRect => solid !== null)
     : [];
+  const solidGrid = createSolidGridFromRects(width, height, solids);
+  const terrainOverrides = Array.isArray(level.terrainOverrides)
+    ? level.terrainOverrides
+      .map((override) => sanitizeTerrainOverride(override, width, height))
+      .filter((override): override is TerrainTileOverride => override !== null && solidGrid[override.y]?.[override.x] === true)
+    : [];
   const props = Array.isArray(level.props)
     ? level.props.map((prop) => sanitizeProp(prop, width))
     : [];
@@ -134,27 +174,19 @@ export function normalizeLevelData(raw: unknown): LevelData {
       y: clamp(toFiniteNumber(level.spawn?.y, Math.max(0, height - 4)), 0, height - 1),
     },
     solids,
+    terrainOverrides,
     props,
   };
 }
 
 export function createSolidGrid(level: LevelData): SolidGrid {
-  const grid = Array.from({ length: level.height }, () => Array(level.width).fill(false));
-
-  for (const solid of level.solids) {
-    const safeSolid = sanitizeSolidRect(solid, level.width, level.height);
-    if (!safeSolid) {
-      continue;
-    }
-
-    for (let y = safeSolid.y; y < safeSolid.y + safeSolid.height; y += 1) {
-      for (let x = safeSolid.x; x < safeSolid.x + safeSolid.width; x += 1) {
-        grid[y][x] = true;
-      }
-    }
-  }
-
-  return grid;
+  return createSolidGridFromRects(
+    level.width,
+    level.height,
+    level.solids
+      .map((solid) => sanitizeSolidRect(solid, level.width, level.height))
+      .filter((solid): solid is LevelSolidRect => solid !== null),
+  );
 }
 
 export function compressSolidGrid(grid: SolidGrid): LevelSolidRect[] {
@@ -224,6 +256,12 @@ export function resizeLevel(level: LevelData, nextWidth: number, nextHeight: num
       y: clamp(level.spawn.y, 0, height - 1),
     },
     solids: compressSolidGrid(nextGrid),
+    terrainOverrides: level.terrainOverrides.filter((override) =>
+      override.x >= 0
+      && override.x < width
+      && override.y >= 0
+      && override.y < height
+      && nextGrid[override.y]?.[override.x] === true),
     props: level.props.filter((prop) => prop.x >= 0 && prop.x < width),
   });
 }

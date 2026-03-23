@@ -30,6 +30,10 @@ export interface RenderedProp {
   display: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
 }
 
+function getTerrainKey(x: number, y: number): string {
+  return `${x}:${y}`;
+}
+
 function pickFrom(tiles: readonly number[], seed: number): number {
   return tiles[Math.abs(seed) % tiles.length];
 }
@@ -89,6 +93,25 @@ function selectTerrainTile(grid: SolidGrid, x: number, y: number, levelWidth: nu
     : pickFrom(TERRAIN_TILES.deepFill, x + y);
 }
 
+export function createTerrainOverrideLookup(level: LevelData): Map<string, number> {
+  return new Map(level.terrainOverrides.map((override) => [getTerrainKey(override.x, override.y), override.tile]));
+}
+
+export function getTerrainTileIndex(
+  level: LevelData,
+  grid: SolidGrid,
+  x: number,
+  y: number,
+  overrideLookup = createTerrainOverrideLookup(level),
+): number | null {
+  if (!isSolid(grid, x, y)) {
+    return null;
+  }
+
+  return overrideLookup.get(getTerrainKey(x, y))
+    ?? selectTerrainTile(grid, x, y, level.width, level.height);
+}
+
 export function createOakwoodsAnimations(scene: Phaser.Scene): void {
   const animations = [
     { key: "char-blue-idle", texture: "oakwoods-char-blue", start: 0, end: 5, frameRate: 8, repeat: -1 },
@@ -140,6 +163,7 @@ export function updateParallax(layers: ParallaxLayers, cameraScrollX: number): v
 }
 
 export function renderTerrain(scene: Phaser.Scene, level: LevelData, grid = createSolidGrid(level)): RenderedTerrain {
+  const terrainOverrideLookup = createTerrainOverrideLookup(level);
   const map = scene.make.tilemap({
     tileWidth: TILE_SIZE,
     tileHeight: TILE_SIZE,
@@ -160,11 +184,12 @@ export function renderTerrain(scene: Phaser.Scene, level: LevelData, grid = crea
 
   for (let y = 0; y < level.height; y += 1) {
     for (let x = 0; x < level.width; x += 1) {
-      if (!isSolid(grid, x, y)) {
+      const tileIndex = getTerrainTileIndex(level, grid, x, y, terrainOverrideLookup);
+      if (tileIndex === null) {
         continue;
       }
 
-      map.putTileAt(selectTerrainTile(grid, x, y, level.width, level.height), x, y, true, "terrain");
+      map.putTileAt(tileIndex, x, y, true, "terrain");
     }
   }
 
@@ -181,13 +206,14 @@ export function renderTerrain(scene: Phaser.Scene, level: LevelData, grid = crea
         && isSolid(grid, x, y - 1)
         && isSolid(grid, x - 1, y)
         && isSolid(grid, x + 1, y);
+      const fillsInterior = isInterior && !terrainOverrideLookup.has(getTerrainKey(x, y));
 
-      if (isInterior && spanStart === -1) {
+      if (fillsInterior && spanStart === -1) {
         spanStart = x;
       }
 
-      if ((!isInterior || x === level.width) && spanStart !== -1) {
-        const spanEnd = isInterior ? x : x - 1;
+      if ((!fillsInterior || x === level.width) && spanStart !== -1) {
+        const spanEnd = fillsInterior ? x : x - 1;
         interiorFill.fillRect(
           spanStart * TILE_SIZE,
           LAYER_OFFSET_Y + (y * TILE_SIZE),

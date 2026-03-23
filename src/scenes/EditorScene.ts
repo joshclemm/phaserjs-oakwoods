@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { setEditorChromeState } from "../appMode";
-import { getEditorDomRefs, setActiveToolButton, type EditorTool } from "../editor/dom";
+import { getEditorDomRefs, setActiveTerrainTileButton, setActiveToolButton, type EditorTool } from "../editor/dom";
 import {
   cloneLevelData,
   compressSolidGrid,
@@ -45,6 +45,12 @@ interface DragRect {
   endY: number;
 }
 
+interface TerrainPaintStroke {
+  before: LevelData;
+  changed: boolean;
+  visited: Set<string>;
+}
+
 const HISTORY_LIMIT = 100;
 const TRACKPAD_PINCH_ZOOM_SENSITIVITY = 0.0035;
 
@@ -63,6 +69,7 @@ export class EditorScene extends Phaser.Scene {
 
   private uiAbortController?: AbortController;
   private tool: EditorTool = "terrain-draw";
+  private selectedTerrainTile: number | null = null;
   private selectedPropIndex: number | null = null;
   private draftProp: PropDraft = {
     type: "lamp",
@@ -73,6 +80,7 @@ export class EditorScene extends Phaser.Scene {
   private undoStack: LevelData[] = [];
   private redoStack: LevelData[] = [];
   private dragRect: DragRect | null = null;
+  private terrainPaintStroke: TerrainPaintStroke | null = null;
   private isPanning = false;
   private gestureZoomStart = 1;
   private lastPointerPosition = new Phaser.Math.Vector2();
@@ -107,7 +115,7 @@ export class EditorScene extends Phaser.Scene {
     this.bindSceneInput();
     this.syncUi();
     this.persistActiveLevel();
-    this.setStatus("Drag to add terrain. Two-finger scroll pans the view. Pinch to zoom.");
+    this.setStatus("Draw adds solids. Paint stamps exact terrain sprites. Two-finger scroll pans the view. Pinch to zoom.");
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.uiAbortController?.abort();
@@ -146,6 +154,15 @@ export class EditorScene extends Phaser.Scene {
     refs.downloadButton.addEventListener("click", () => this.downloadLevelJson(), { signal });
     refs.undoButton.addEventListener("click", () => this.undo(), { signal });
     refs.redoButton.addEventListener("click", () => this.redo(), { signal });
+    refs.terrainAutoButton.addEventListener("click", () => this.setSelectedTerrainTile(null), { signal });
+    for (const button of refs.terrainPaletteButtons) {
+      button.addEventListener("click", () => {
+        const tileIndex = Number(button.dataset.terrainTileIndex);
+        if (Number.isInteger(tileIndex)) {
+          this.setSelectedTerrainTile(tileIndex);
+        }
+      }, { signal });
+    }
     refs.deletePropButton.addEventListener("click", () => this.deleteSelectedProp(), { signal });
     refs.nudgeLeftButton.addEventListener("click", () => this.nudgeSelectedProp(-0.5), { signal });
     refs.nudgeRightButton.addEventListener("click", () => this.nudgeSelectedProp(0.5), { signal });
@@ -194,10 +211,12 @@ export class EditorScene extends Phaser.Scene {
     } else if (event.key === "2") {
       this.setTool("terrain-erase");
     } else if (event.key === "3") {
-      this.setTool("prop");
+      this.setTool("terrain-paint");
     } else if (event.key === "4") {
-      this.setTool("spawn");
+      this.setTool("prop");
     } else if (event.key === "5") {
+      this.setTool("spawn");
+    } else if (event.key === "6") {
       this.setTool("select");
     } else if (event.key === "Escape") {
       this.selectProp(null);
@@ -229,6 +248,20 @@ export class EditorScene extends Phaser.Scene {
         endY: tile.y,
       };
       this.redrawDragOverlay();
+      return;
+    }
+
+    if (this.tool === "terrain-paint") {
+      if (!tile) {
+        return;
+      }
+
+      this.terrainPaintStroke = {
+        before: cloneLevelData(this.level),
+        changed: false,
+        visited: new Set(),
+      };
+      this.applyTerrainPaintAt(tile.x, tile.y);
       return;
     }
 
@@ -272,11 +305,32 @@ export class EditorScene extends Phaser.Scene {
       this.redrawDragOverlay();
     }
 
+    if (!this.isPanning && this.terrainPaintStroke && pointer.isDown && tile) {
+      this.applyTerrainPaintAt(tile.x, tile.y);
+    }
+
     this.redrawHoverOverlay(tile);
   }
 
   private handlePointerUp(_pointer: Phaser.Input.Pointer): void {
     this.isPanning = false;
+
+    if (this.terrainPaintStroke) {
+      const stroke = this.terrainPaintStroke;
+      this.terrainPaintStroke = null;
+
+      if (!stroke.changed) {
+        return;
+      }
+
+      this.finalizeLevelMutation(
+        stroke.before,
+        this.selectedTerrainTile === null
+          ? "Restored painted terrain cells to autotile."
+          : `Painted terrain with tile ${this.selectedTerrainTile}.`,
+      );
+      return;
+    }
 
     if (!this.dragRect) {
       return;
@@ -306,6 +360,9 @@ export class EditorScene extends Phaser.Scene {
     }
 
     this.level.solids = compressSolidGrid(this.solidGrid);
+    if (!nextSolid) {
+      this.pruneTerrainOverridesToSolids();
+    }
     this.finalizeLevelMutation(
       before,
       nextSolid ? "Added terrain block." : "Removed terrain block.",
@@ -470,6 +527,77 @@ export class EditorScene extends Phaser.Scene {
       y: Phaser.Math.Clamp(tileY, 0, this.level.height - 1),
     };
     this.finalizeLevelMutation(before, "Moved player spawn.");
+  }
+
+  private applyTerrainPaintAt(tileX: number, tileY: number): void {
+    const stroke = this.terrainPaintStroke;
+    if (!stroke) {
+      return;
+    }
+
+    const key = `${tileX}:${tileY}`;
+    if (stroke.visited.has(key)) {
+      return;
+    }
+
+    stroke.visited.add(key);
+
+    if (!this.solidGrid[tileY]?.[tileX]) {
+      if (!stroke.changed) {
+        this.setStatus("Terrain paint only applies to solid cells. Use Draw first, then Paint.");
+      }
+      return;
+    }
+
+    if (!this.setTerrainOverrideAt(tileX, tileY, this.selectedTerrainTile)) {
+      return;
+    }
+
+    stroke.changed = true;
+    this.refreshTerrainVisuals();
+  }
+
+  private setTerrainOverrideAt(tileX: number, tileY: number, tileIndex: number | null): boolean {
+    const existingIndex = this.level.terrainOverrides.findIndex((override) => override.x === tileX && override.y === tileY);
+    const existingOverride = existingIndex >= 0 ? this.level.terrainOverrides[existingIndex] : null;
+
+    if (tileIndex === null) {
+      if (!existingOverride) {
+        return false;
+      }
+
+      this.level.terrainOverrides.splice(existingIndex, 1);
+      return true;
+    }
+
+    if (existingOverride) {
+      if (existingOverride.tile === tileIndex) {
+        return false;
+      }
+
+      existingOverride.tile = tileIndex;
+      return true;
+    }
+
+    this.level.terrainOverrides.push({
+      x: tileX,
+      y: tileY,
+      tile: tileIndex,
+    });
+    return true;
+  }
+
+  private refreshTerrainVisuals(): void {
+    this.terrain?.layer.destroy();
+    this.terrain?.interiorFill.destroy();
+    this.terrain?.map.destroy();
+    this.terrain = renderTerrain(this, this.level, this.solidGrid);
+    this.redrawGrid();
+    this.redrawSelectionOverlay();
+  }
+
+  private pruneTerrainOverridesToSolids(): void {
+    this.level.terrainOverrides = this.level.terrainOverrides.filter((override) => this.solidGrid[override.y]?.[override.x] === true);
   }
 
   private deleteSelectedProp(): void {
@@ -750,6 +878,9 @@ export class EditorScene extends Phaser.Scene {
     refs.levelName.value = this.level.name;
     refs.levelWidth.value = String(this.level.width);
     refs.levelHeight.value = String(this.level.height);
+    refs.terrainSelection.textContent = this.selectedTerrainTile === null
+      ? "Selected terrain sprite: Auto."
+      : `Selected terrain sprite: Tile ${this.selectedTerrainTile}.`;
     refs.propType.value = propSettings.type;
     refs.propDepth.value = propSettings.depth;
     refs.propFlip.checked = propSettings.flipX;
@@ -766,6 +897,7 @@ export class EditorScene extends Phaser.Scene {
       : "Nothing selected.";
 
     setActiveToolButton(this.tool, refs);
+    setActiveTerrainTileButton(this.selectedTerrainTile, refs);
     this.redrawSelectionOverlay();
   }
 
@@ -786,11 +918,25 @@ export class EditorScene extends Phaser.Scene {
     const toolStatus: Record<EditorTool, string> = {
       "terrain-draw": "Terrain draw mode: drag a rectangle to add solid ground.",
       "terrain-erase": "Terrain erase mode: drag a rectangle to remove solid ground.",
+      "terrain-paint": this.selectedTerrainTile === null
+        ? "Terrain paint mode: click or drag across solid cells to restore autotile."
+        : `Terrain paint mode: click or drag across solid cells to stamp tile ${this.selectedTerrainTile}.`,
       prop: "Prop mode: click in the level to place the selected decoration.",
       spawn: "Spawn mode: click a tile to move the player start.",
       select: "Select mode: click a prop to inspect, tweak, nudge, or delete it.",
     };
     this.setStatus(toolStatus[tool]);
+  }
+
+  private setSelectedTerrainTile(tileIndex: number | null): void {
+    this.selectedTerrainTile = tileIndex;
+    this.tool = "terrain-paint";
+    this.syncUi();
+    this.setStatus(
+      tileIndex === null
+        ? "Terrain paint mode: click or drag across solid cells to restore autotile."
+        : `Terrain paint mode: click or drag across solid cells to stamp tile ${tileIndex}.`,
+    );
   }
 
   private selectProp(propIndex: number | null): void {

@@ -206,6 +206,36 @@
         font-size: 0.72rem;
       }
 
+      .terrain-palette {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .terrain-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 6px;
+        max-height: 320px;
+        overflow-y: auto;
+        padding-right: 4px;
+      }
+
+      .terrain-swatch {
+        aspect-ratio: 1;
+        padding: 0;
+        min-width: 0;
+        background-color: rgba(10, 8, 7, 0.72);
+        background-repeat: no-repeat;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+
+      .terrain-swatch[data-active="true"] {
+        border-color: rgba(255, 205, 143, 0.62);
+        box-shadow: inset 0 0 0 1px rgba(255, 219, 171, 0.3);
+      }
+
       #editor-statusbar {
         justify-content: space-between;
         color: var(--text-dim);
@@ -276,7 +306,7 @@
       <aside id="editor-left" class="editor-panel">
         <div class="stack">
           <h1>Oak Woods Level Designer</h1>
-          <p style="color: var(--text-dim); line-height: 1.5;">V1 blockout editor: terrain rectangles, props, spawn, undo/redo, JSON export, and instant playtest.</p>
+          <p style="color: var(--text-dim); line-height: 1.5;">Block out collision, then paint exact terrain sprites from the Oak Woods sheet. Props, spawn, undo/redo, JSON export, and instant playtest stay in the same flow.</p>
         </div>
 
         <section class="stack">
@@ -334,9 +364,10 @@
           <span class="tool-label">Tools</span>
           <button data-editor-tool="terrain-draw" data-active="true">1 Draw</button>
           <button data-editor-tool="terrain-erase">2 Erase</button>
-          <button data-editor-tool="prop">3 Prop</button>
-          <button data-editor-tool="spawn">4 Spawn</button>
-          <button data-editor-tool="select">5 Select</button>
+          <button data-editor-tool="terrain-paint">3 Paint</button>
+          <button data-editor-tool="prop">4 Prop</button>
+          <button data-editor-tool="spawn">5 Spawn</button>
+          <button data-editor-tool="select">6 Select</button>
         </div>
 
         <div id="game-stage">
@@ -344,11 +375,23 @@
 
         <div id="editor-statusbar" class="editor-panel">
           <span id="editor-cursor">Tile -, -</span>
-          <span id="editor-status">Drag to add terrain. Two-finger scroll pans the view. Pinch to zoom.</span>
+          <span id="editor-status">Draw adds solids. Paint stamps exact terrain sprites. Two-finger scroll pans the view. Pinch to zoom.</span>
         </div>
       </main>
 
       <aside id="editor-right" class="editor-panel">
+        <section class="stack">
+          <div>
+            <h2>Terrain Palette</h2>
+            <div class="terrain-palette">
+              <button id="editor-terrain-auto">Auto Terrain</button>
+              <p id="editor-terrain-selection">Selected terrain sprite: Auto.</p>
+              <div id="editor-terrain-grid" class="terrain-grid"></div>
+              <p style="color: var(--text-dim); line-height: 1.5;">Use Paint to stamp any tilesheet sprite onto solid cells. Choose Auto to clear a manual override back to autotile.</p>
+            </div>
+          </div>
+        </section>
+
         <section class="stack">
           <div>
             <h2>Prop Palette</h2>
@@ -394,6 +437,7 @@
             <ul>
               <li>Two-finger scroll pans the view on a trackpad.</li>
               <li>Pinch on the trackpad to zoom the camera.</li>
+              <li>Use Draw/Erase for collision shapes, then Paint to stamp exact terrain sprites onto solid cells.</li>
               <li>Hold <strong>Space</strong> or right-drag if you want grab-style panning.</li>
               <li>Press <strong>Ctrl/Cmd+Z</strong> to undo and <strong>Shift+Ctrl/Cmd+Z</strong> to redo.</li>
               <li>Press <strong>Esc</strong> in playtest to return to the editor.</li>

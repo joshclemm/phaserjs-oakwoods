@@ -1,6 +1,12 @@
-import { PROP_TYPES } from "../levels/types";
+import {
+  OAK_WOODS_TILESET_COLUMNS,
+  OAK_WOODS_TILESET_ROWS,
+  OAK_WOODS_TILESET_TILE_COUNT,
+  OAK_WOODS_TILESET_URL,
+  PROP_TYPES,
+} from "../levels/types";
 
-export type EditorTool = "terrain-draw" | "terrain-erase" | "prop" | "spawn" | "select";
+export type EditorTool = "terrain-draw" | "terrain-erase" | "terrain-paint" | "prop" | "spawn" | "select";
 
 export interface EditorDomRefs {
   levelName: HTMLInputElement;
@@ -8,6 +14,9 @@ export interface EditorDomRefs {
   levelHeight: HTMLInputElement;
   status: HTMLSpanElement;
   cursor: HTMLSpanElement;
+  terrainSelection: HTMLParagraphElement;
+  terrainAutoButton: HTMLButtonElement;
+  terrainPaletteButtons: HTMLButtonElement[];
   propEmpty: HTMLDivElement;
   propDetails: HTMLDivElement;
   selection: HTMLParagraphElement;
@@ -67,10 +76,39 @@ function ensurePropTypeOptions(select: HTMLSelectElement): void {
   }
 }
 
+function ensureTerrainPaletteButtons(container: HTMLDivElement): void {
+  if (container.childElementCount > 0) {
+    return;
+  }
+
+  const previewTileSize = 32;
+  const fragment = document.createDocumentFragment();
+
+  for (let tileIndex = 0; tileIndex < OAK_WOODS_TILESET_TILE_COUNT; tileIndex += 1) {
+    const button = document.createElement("button");
+    const column = tileIndex % OAK_WOODS_TILESET_COLUMNS;
+    const row = Math.floor(tileIndex / OAK_WOODS_TILESET_COLUMNS);
+
+    button.type = "button";
+    button.className = "terrain-swatch";
+    button.dataset.terrainTileIndex = String(tileIndex);
+    button.title = `Tile ${tileIndex}`;
+    button.style.backgroundImage = `url("${OAK_WOODS_TILESET_URL}")`;
+    button.style.backgroundSize = `${OAK_WOODS_TILESET_COLUMNS * previewTileSize}px ${OAK_WOODS_TILESET_ROWS * previewTileSize}px`;
+    button.style.backgroundPosition = `-${column * previewTileSize}px -${row * previewTileSize}px`;
+    fragment.append(button);
+  }
+
+  container.append(fragment);
+}
+
 export function getEditorDomRefs(): EditorDomRefs {
   if (cachedRefs) {
     return cachedRefs;
   }
+
+  const terrainPaletteGrid = getElement<HTMLDivElement>("editor-terrain-grid");
+  ensureTerrainPaletteButtons(terrainPaletteGrid);
 
   const refs: EditorDomRefs = {
     levelName: getElement<HTMLInputElement>("editor-level-name"),
@@ -78,6 +116,9 @@ export function getEditorDomRefs(): EditorDomRefs {
     levelHeight: getElement<HTMLInputElement>("editor-level-height"),
     status: getElement<HTMLSpanElement>("editor-status"),
     cursor: getElement<HTMLSpanElement>("editor-cursor"),
+    terrainSelection: getElement<HTMLParagraphElement>("editor-terrain-selection"),
+    terrainAutoButton: getElement<HTMLButtonElement>("editor-terrain-auto"),
+    terrainPaletteButtons: Array.from(document.querySelectorAll<HTMLButtonElement>("[data-terrain-tile-index]")),
     propEmpty: getElement<HTMLDivElement>("editor-prop-empty"),
     propDetails: getElement<HTMLDivElement>("editor-prop-details"),
     selection: getElement<HTMLParagraphElement>("editor-selection"),
@@ -107,5 +148,12 @@ export function getEditorDomRefs(): EditorDomRefs {
 export function setActiveToolButton(tool: EditorTool, refs = getEditorDomRefs()): void {
   refs.toolButtons.forEach((button) => {
     button.dataset.active = button.dataset.editorTool === tool ? "true" : "false";
+  });
+}
+
+export function setActiveTerrainTileButton(tileIndex: number | null, refs = getEditorDomRefs()): void {
+  refs.terrainAutoButton.dataset.active = tileIndex === null ? "true" : "false";
+  refs.terrainPaletteButtons.forEach((button) => {
+    button.dataset.active = button.dataset.terrainTileIndex === String(tileIndex) ? "true" : "false";
   });
 }

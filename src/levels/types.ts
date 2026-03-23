@@ -1,8 +1,12 @@
-export const LEVEL_VERSION = 4;
+export const LEVEL_VERSION = 5;
 export const TILE_SIZE = 24;
 export const VIEWPORT_WIDTH = 320;
 export const VIEWPORT_HEIGHT = 180;
 export const LAYER_OFFSET_Y = 16;
+export const OAK_WOODS_TILESET_COLUMNS = 21;
+export const OAK_WOODS_TILESET_ROWS = 15;
+export const OAK_WOODS_TILESET_TILE_COUNT = OAK_WOODS_TILESET_COLUMNS * OAK_WOODS_TILESET_ROWS;
+export const OAK_WOODS_TILESET_URL = "/assets/oakwoods/oak_woods_tileset.png";
 
 export const PROP_TYPES = [
   "shop",
@@ -37,6 +41,12 @@ export interface LevelSolidRect {
   height: number;
 }
 
+export interface TerrainTileOverride {
+  x: number;
+  y: number;
+  tile: number;
+}
+
 export interface LevelData {
   version: number;
   name: string;
@@ -47,5 +57,6 @@ export interface LevelData {
     y: number;
   };
   solids: LevelSolidRect[];
+  terrainOverrides: TerrainTileOverride[];
   props: LevelProp[];
 }
